@@ -7,6 +7,7 @@ const nav = [
   { href: '/',            icon: '📋', label: 'Asignaciones'   },
   { href: '/historial',   icon: '📅', label: 'Historial'      },
   { href: '/graficas',    icon: '📊', label: 'Gráficas'       },
+  { href: '/reportes',    icon: '🚨', label: 'Reportes'       },
   { href: '/importar',    icon: '📥', label: 'Importar datos' },
   { href: '/calculadora', icon: '💰', label: 'Calculadora'    },
 ]
