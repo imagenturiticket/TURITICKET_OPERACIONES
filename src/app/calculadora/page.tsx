@@ -110,7 +110,7 @@ export default function Calculadora() {
           pago_base: pagoBase,
           bono_limpieza: derecho && !sucio,
           bono_puntualidad: derecho,
-          extra: 0, descuento: 0, origen: 'historial'
+          extra: 0, festivo: 0, descuento: 0, origen: 'historial'
         })
         nuevos++
       }
@@ -143,21 +143,22 @@ export default function Calculadora() {
       unidad_nombre: '', destino: '', tipo_servicio: 'tour_foraneo',
       pax: 1, hora_inicio: '', hora_fin: '', nota_original: '', nota_pago: '',
       pago_base: 250, bono_limpieza: true, bono_puntualidad: true,
-      extra: 0, descuento: 0, origen: 'manual'
+      extra: 0, festivo: 0, descuento: 0, origen: 'manual'
     }])
   }
 
   function totalFila(f: any) {
     if (['descanso','vacaciones','falta','oficina','jornada_8h'].includes(f.tipo_servicio)) return 0
-    return (f.pago_base||0) + (f.bono_limpieza?100:0) + (f.extra||0) - (f.descuento||0)
+    return (f.pago_base||0) + (f.bono_limpieza?100:0) + (f.extra||0) + (f.festivo||0) - (f.descuento||0)
   }
 
   const subtotalServicios = filas.reduce((s,f) => s+(f.pago_base||0), 0)
   const totalBonos = filas.reduce((s,f) => s+(f.bono_limpieza?100:0), 0)
   const totalExtras = filas.reduce((s,f) => s+(f.extra||0), 0)
+  const totalFestivos = filas.reduce((s,f) => s+(f.festivo||0), 0)
   const totalDescuentos = filas.reduce((s,f) => s+(f.descuento||0), 0)
   const sueldoTotal = sueldoBase * diasPeriodo
-  const totalPagar = subtotalServicios + totalBonos + totalExtras - totalDescuentos + sueldoTotal
+  const totalPagar = subtotalServicios + totalBonos + totalExtras + totalFestivos - totalDescuentos + sueldoTotal
   const totalPagado = pagoTransferencia + pagoEfectivo
   const saldoPendiente = totalPagar - totalPagado
 
@@ -492,6 +493,7 @@ export default function Calculadora() {
                         <th className="px-3 py-3 text-center">🧹 Limp</th>
                         <th className="px-3 py-3 text-center">⏰ Punt</th>
                         <th className="px-3 py-3 text-center">Extra</th>
+                        <th className="px-3 py-3 text-center text-yellow-400">🎉 Fest.</th>
                         <th className="px-3 py-3 text-center">Desc.</th>
                         <th className="px-3 py-3 text-center font-bold text-white">Total</th>
                         <th className="px-3 py-3"></th>
@@ -529,6 +531,9 @@ export default function Calculadora() {
                               {!esInactivo ? <input type="number" value={f.extra||0} onChange={e => actualizarFila(i,'extra',parseFloat(e.target.value)||0)} className="bg-gray-800 border border-gray-700 rounded px-1 py-1 text-xs text-white w-14 text-center" /> : <span className="text-gray-600">—</span>}
                             </td>
                             <td className="px-3 py-2 text-center">
+                              <input type="number" value={f.festivo||0} onChange={e => actualizarFila(i,'festivo',parseFloat(e.target.value)||0)} className="bg-gray-800 border border-gray-700 rounded px-1 py-1 text-xs text-yellow-300 w-14 text-center" />
+                            </td>
+                            <td className="px-3 py-2 text-center">
                               <input type="number" value={f.descuento||0} onChange={e => actualizarFila(i,'descuento',parseFloat(e.target.value)||0)} className="bg-gray-800 border border-gray-700 rounded px-1 py-1 text-xs text-white w-14 text-center" />
                             </td>
                             <td className="px-3 py-2 text-center font-bold text-green-400">{esInactivo?'—':`$${totalFila(f)}`}</td>
@@ -551,6 +556,7 @@ export default function Calculadora() {
                     <div className="flex justify-between"><span className="text-gray-400">Viáticos</span><span>${subtotalServicios.toLocaleString()}</span></div>
                     <div className="flex justify-between"><span className="text-gray-400">Bonos</span><span>${totalBonos.toLocaleString()}</span></div>
                     {totalExtras>0&&<div className="flex justify-between"><span className="text-gray-400">Extras</span><span>${totalExtras.toLocaleString()}</span></div>}
+                    {totalFestivos>0&&<div className="flex justify-between text-yellow-400"><span>Días festivos</span><span>${totalFestivos.toLocaleString()}</span></div>}
                     {totalDescuentos>0&&<div className="flex justify-between text-red-400"><span>Descuentos</span><span>-${totalDescuentos.toLocaleString()}</span></div>}
                     <div className="flex justify-between font-bold text-green-400 text-base border-t border-gray-700 pt-2 mt-2"><span>TOTAL A PAGAR</span><span>${totalPagar.toLocaleString()}</span></div>
                   </div>
