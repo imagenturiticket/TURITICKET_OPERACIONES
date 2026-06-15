@@ -149,11 +149,11 @@ export default function Calculadora() {
 
   function totalFila(f: any) {
     if (['descanso','vacaciones','falta','oficina','jornada_8h'].includes(f.tipo_servicio)) return 0
-    return (f.pago_base||0) + (f.bono_limpieza?100:0) + (f.bono_puntualidad?100:0) + (f.extra||0) - (f.descuento||0)
+    return (f.pago_base||0) + (f.bono_limpieza?100:0) + (f.extra||0) - (f.descuento||0)
   }
 
   const subtotalServicios = filas.reduce((s,f) => s+(f.pago_base||0), 0)
-  const totalBonos = filas.reduce((s,f) => s+(f.bono_limpieza?100:0)+(f.bono_puntualidad?100:0), 0)
+  const totalBonos = filas.reduce((s,f) => s+(f.bono_limpieza?100:0), 0)
   const totalExtras = filas.reduce((s,f) => s+(f.extra||0), 0)
   const totalDescuentos = filas.reduce((s,f) => s+(f.descuento||0), 0)
   const sueldoTotal = sueldoBase * diasPeriodo
