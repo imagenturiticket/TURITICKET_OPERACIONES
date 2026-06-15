@@ -17,9 +17,7 @@ const MESES_ES = ['enero','febrero','marzo','abril','mayo','junio','julio','agos
 function formatFechaES(fecha: string): string {
   const [y, m, d] = fecha.split('-').map(Number)
   const date = new Date(y, m-1, d)
-  const dia = DIAS_ES[date.getDay()]
-  const mes = MESES_ES[m-1]
-  return `${dia} ${d} de ${mes}`
+  return `${DIAS_ES[date.getDay()]} ${d} de ${MESES_ES[m-1]}`
 }
 
 function clasificarTipo(tipo: string, destino: string, nota: string): string {
@@ -28,8 +26,8 @@ function clasificarTipo(tipo: string, destino: string, nota: string): string {
   const n = nota?.toLowerCase().trim() || ''
   if (d.includes('vacacion')) return 'vacaciones'
   if (d.includes('falta')) return 'falta'
-  if (t === 'renta' && !d.includes('tour')) return 'renta'
   if (d.includes('tour + transfer') || n.includes('tour + transfer')) return 'tour_transfer'
+  if (t === 'renta' && !d.includes('tour')) return 'renta'
   if (t === 'oficina' || d.includes('oficina') || d.includes('a. oficina')) return 'oficina'
   if (d.includes('descanso') || n.includes('descanso')) return 'descanso'
   if (t === 'transfer' || d === 'transfer') return 'transfer'
@@ -108,8 +106,7 @@ export default function Calculadora() {
           pax: a.pax || 1, hora_inicio: a.hora_inicio || '', hora_fin: a.hora_fin || '',
           nota_original: a.nota || '', nota_pago: '',
           pago_base: pagoBase,
-          bono_limpieza: derecho && !sucio,
-          bono_puntualidad: derecho,
+          bono: derecho && !sucio,
           extra: 0, festivo: 0, descuento: 0, origen: 'historial'
         })
         nuevos++
@@ -127,8 +124,7 @@ export default function Calculadora() {
       const updated = { ...f, [campo]: valor }
       if (campo === 'tipo_servicio') {
         updated.pago_base = VIATICOS[valor] || 0
-        const derecho = BONO_DERECHO[valor] || false
-        if (!derecho) { updated.bono_limpieza = false; updated.bono_puntualidad = false }
+        if (!BONO_DERECHO[valor]) updated.bono = false
       }
       return updated
     }))
@@ -142,18 +138,17 @@ export default function Calculadora() {
       fecha: fechaInicio || new Date().toISOString().split('T')[0],
       unidad_nombre: '', destino: '', tipo_servicio: 'tour_foraneo',
       pax: 1, hora_inicio: '', hora_fin: '', nota_original: '', nota_pago: '',
-      pago_base: 250, bono_limpieza: true, bono_puntualidad: true,
-      extra: 0, festivo: 0, descuento: 0, origen: 'manual'
+      pago_base: 250, bono: true, extra: 0, festivo: 0, descuento: 0, origen: 'manual'
     }])
   }
 
   function totalFila(f: any) {
-    if (['descanso','vacaciones','falta','oficina','jornada_8h'].includes(f.tipo_servicio)) return 0
-    return (f.pago_base||0) + (f.bono_limpieza?100:0) + (f.extra||0) + (f.festivo||0) - (f.descuento||0)
+    if (['descanso','vacaciones','falta','oficina','jornada_8h'].includes(f.tipo_servicio)) return f.festivo || 0
+    return (f.pago_base||0) + (f.bono?100:0) + (f.extra||0) + (f.festivo||0) - (f.descuento||0)
   }
 
   const subtotalServicios = filas.reduce((s,f) => s+(f.pago_base||0), 0)
-  const totalBonos = filas.reduce((s,f) => s+(f.bono_limpieza?100:0), 0)
+  const totalBonos = filas.reduce((s,f) => s+(f.bono?100:0), 0)
   const totalExtras = filas.reduce((s,f) => s+(f.extra||0), 0)
   const totalFestivos = filas.reduce((s,f) => s+(f.festivo||0), 0)
   const totalDescuentos = filas.reduce((s,f) => s+(f.descuento||0), 0)
@@ -170,7 +165,7 @@ export default function Calculadora() {
     const { data: pago, error } = await supabase.from('pagos_operador').insert({
       operador_id: operadorId, fecha_inicio: fechaInicio, fecha_fin: fechaFin,
       subtotal_servicios: subtotalServicios, total_viaticos: 0,
-      total_bonos: totalBonos, total_extras: totalExtras, total_descuentos: totalDescuentos,
+      total_bonos: totalBonos, total_extras: totalExtras + totalFestivos, total_descuentos: totalDescuentos,
       total_a_pagar: totalPagar, pago_transferencia: pagoTransferencia,
       pago_efectivo: pagoEfectivo, total_pagado: totalPagado,
       saldo_pendiente: saldoPendiente, estado, notas: notaPago
@@ -182,9 +177,8 @@ export default function Calculadora() {
         operador_id: operadorId, unidad_nombre: f.unidad_nombre, destino: f.destino,
         tipo_servicio: f.tipo_servicio, pax: f.pax,
         nota_original: f.nota_original, nota_pago: f.nota_pago,
-        pago_base: f.pago_base, bono_limpieza: f.bono_limpieza?100:0,
-        bono_puntualidad: f.bono_puntualidad?100:0,
-        viaticos: 0, extra: f.extra, descuento: f.descuento,
+        pago_base: f.pago_base, bono_limpieza: f.bono?100:0, bono_puntualidad: 0,
+        viaticos: 0, extra: (f.extra||0)+(f.festivo||0), descuento: f.descuento,
         total_dia: totalFila(f), origen: f.origen
       })
     }
@@ -201,165 +195,136 @@ export default function Calculadora() {
     const autoTable = (await import('jspdf-autotable')).default
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' })
 
-    // ENCABEZADO
     doc.setFillColor(67, 56, 202)
     doc.rect(0, 0, 216, 25, 'F')
-    doc.setTextColor(255, 255, 255)
-    doc.setFontSize(18); doc.setFont('helvetica', 'bold')
+    doc.setTextColor(255,255,255)
+    doc.setFontSize(18); doc.setFont('helvetica','bold')
     doc.text('TURITICKET', 15, 12)
-    doc.setFontSize(10); doc.setFont('helvetica', 'normal')
+    doc.setFontSize(10); doc.setFont('helvetica','normal')
     doc.text('Recibo de Pago Quincenal de Operador', 15, 20)
-    doc.setTextColor(0, 0, 0)
+    doc.setTextColor(0,0,0)
 
-    // DATOS DEL OPERADOR
-    doc.setFontSize(11); doc.setFont('helvetica', 'bold')
+    doc.setFontSize(11); doc.setFont('helvetica','bold')
     doc.text(`Operador: ${op?.nombre?.toUpperCase() || ''}`, 15, 34)
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(9)
-    const [yi, mi, di] = fechaInicio.split('-').map(Number)
-    const [yf, mf, df] = fechaFin.split('-').map(Number)
+    doc.setFont('helvetica','normal'); doc.setFontSize(9)
+    const [yi,mi,di] = fechaInicio.split('-').map(Number)
+    const [yf,mf,df] = fechaFin.split('-').map(Number)
     doc.text(`Periodo: ${di} de ${MESES_ES[mi-1]} al ${df} de ${MESES_ES[mf-1]} de ${yf}`, 15, 40)
-    doc.text(`Fecha de generación: ${new Date().toLocaleDateString('es-MX', {weekday:'long', year:'numeric', month:'long', day:'numeric'})}`, 15, 46)
+    doc.text(`Fecha de generación: ${new Date().toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}`, 15, 46)
     doc.text(`Estado: ${estado.toUpperCase()}`, 15, 52)
-
-    // TABLA DE SERVICIOS
-    const filasTabla = filas.map(f => {
-      const esTrabajado = !['descanso','vacaciones','falta'].includes(f.tipo_servicio)
-      return [
-        formatFechaES(f.fecha),
-        f.unidad_nombre || '—',
-        f.destino || '—',
-        LABEL_TIPO[f.tipo_servicio] || f.tipo_servicio,
-        esTrabajado ? `$${f.pago_base}` : '—',
-        BONO_DERECHO[f.tipo_servicio] ? (f.bono_limpieza ? '✓' : '✗') : '—',
-        BONO_DERECHO[f.tipo_servicio] ? (f.bono_puntualidad ? '✓' : '✗') : '—',
-        f.extra > 0 ? `$${f.extra}` : '—',
-        f.descuento > 0 ? `-$${f.descuento}` : '—',
-        esTrabajado ? `$${totalFila(f)}` : '—',
-      ]
-    })
 
     autoTable(doc, {
       startY: 58,
-      head: [['Fecha', 'Unidad', 'Destino', 'Tipo', 'Viát.', 'Limp.', 'Punt.', 'Extra', 'Desc.', 'Total']],
-      body: filasTabla,
+      head: [['Fecha','Unidad','Destino','Tipo','Viát.','Bono','Festivo','Extra','Desc.','Total']],
+      body: filas.map(f => {
+        const esTrabajado = !['descanso','vacaciones','falta'].includes(f.tipo_servicio)
+        return [
+          formatFechaES(f.fecha),
+          f.unidad_nombre||'—',
+          f.destino||'—',
+          LABEL_TIPO[f.tipo_servicio]||f.tipo_servicio,
+          esTrabajado ? `$${f.pago_base}` : '—',
+          BONO_DERECHO[f.tipo_servicio] ? (f.bono?'✓':'✗') : '—',
+          f.festivo > 0 ? `$${f.festivo}` : '—',
+          f.extra > 0 ? `$${f.extra}` : '—',
+          f.descuento > 0 ? `-$${f.descuento}` : '—',
+          esTrabajado || f.festivo > 0 ? `$${totalFila(f)}` : '—',
+        ]
+      }),
       styles: { fontSize: 7.5, cellPadding: 1.5 },
-      headStyles: { fillColor: [67, 56, 202], textColor: 255, fontStyle: 'bold', fontSize: 8 },
+      headStyles: { fillColor:[67,56,202], textColor:255, fontStyle:'bold', fontSize:8 },
       columnStyles: {
-        0: { cellWidth: 38 },
-        1: { cellWidth: 18 },
-        2: { cellWidth: 22 },
-        3: { cellWidth: 25 },
-        4: { cellWidth: 12, halign: 'center' },
-        5: { cellWidth: 12, halign: 'center' },
-        6: { cellWidth: 12, halign: 'center' },
-        7: { cellWidth: 12, halign: 'center' },
-        8: { cellWidth: 12, halign: 'center' },
-        9: { cellWidth: 16, halign: 'right' },
+        0:{cellWidth:38}, 1:{cellWidth:18}, 2:{cellWidth:22}, 3:{cellWidth:25},
+        4:{cellWidth:12,halign:'center'}, 5:{cellWidth:12,halign:'center'},
+        6:{cellWidth:14,halign:'center'}, 7:{cellWidth:12,halign:'center'},
+        8:{cellWidth:12,halign:'center'}, 9:{cellWidth:16,halign:'right'},
       },
       didParseCell: (data: any) => {
         const row = filas[data.row.index]
         if (!row) return
         if (['descanso','vacaciones'].includes(row.tipo_servicio)) {
-          data.cell.styles.fillColor = [45, 45, 55]
-          data.cell.styles.textColor = [150, 150, 160]
+          data.cell.styles.fillColor = [45,45,55]; data.cell.styles.textColor = [150,150,160]
         } else if (row.tipo_servicio === 'falta') {
-          data.cell.styles.fillColor = [80, 20, 20]
-          data.cell.styles.textColor = [255, 150, 150]
-        } else if (row.tipo_servicio === 'oficina' || row.tipo_servicio === 'jornada_8h') {
-          data.cell.styles.fillColor = [30, 40, 60]
-          data.cell.styles.textColor = [150, 170, 210]
+          data.cell.styles.fillColor = [80,20,20]; data.cell.styles.textColor = [255,150,150]
+        } else if (['oficina','jornada_8h'].includes(row.tipo_servicio)) {
+          data.cell.styles.fillColor = [30,40,60]; data.cell.styles.textColor = [150,170,210]
         }
         if (data.column.index === 5 && data.section === 'body') {
-          if (data.cell.text[0] === '✓') data.cell.styles.textColor = [80, 200, 120]
-          if (data.cell.text[0] === '✗') data.cell.styles.textColor = [220, 80, 80]
-        }
-        if (data.column.index === 6 && data.section === 'body') {
-          if (data.cell.text[0] === '✓') data.cell.styles.textColor = [80, 200, 120]
-          if (data.cell.text[0] === '✗') data.cell.styles.textColor = [220, 80, 80]
+          if (data.cell.text[0]==='✓') data.cell.styles.textColor = [80,200,120]
+          if (data.cell.text[0]==='✗') data.cell.styles.textColor = [220,80,80]
         }
       }
     })
 
     let y = (doc as any).lastAutoTable.finalY + 8
+    doc.setFillColor(245,245,250)
+    doc.rect(15, y, 186, 65, 'F')
+    doc.setDrawColor(200,200,210)
+    doc.rect(15, y, 186, 65, 'S')
+    doc.setFontSize(10); doc.setFont('helvetica','bold')
+    doc.setTextColor(67,56,202)
+    doc.text('RESUMEN DE PAGO', 20, y+7)
+    doc.setTextColor(0,0,0); doc.setFont('helvetica','normal'); doc.setFontSize(9)
 
-    // RESUMEN DE TOTALES
-    doc.setFillColor(245, 245, 250)
-    doc.rect(15, y, 186, 60, 'F')
-    doc.setDrawColor(200, 200, 210)
-    doc.rect(15, y, 186, 60, 'S')
-
-    doc.setFontSize(10); doc.setFont('helvetica', 'bold')
-    doc.setTextColor(67, 56, 202)
-    doc.text('RESUMEN DE PAGO', 20, y + 7)
-    doc.setTextColor(0, 0, 0)
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(9)
-
-    const col1x = 20, col2x = 90, col3x = 140
-    doc.text(`Sueldo base (${diasPeriodo} días × $${sueldoBase}):`, col1x, y+14)
-    doc.setFont('helvetica','bold'); doc.text(`$${sueldoTotal.toLocaleString()}`, col2x, y+14)
+    const col1=20, col2=90, col3=140
+    doc.text(`Sueldo base (${diasPeriodo} días × $${sueldoBase}):`, col1, y+14)
+    doc.setFont('helvetica','bold'); doc.text(`$${sueldoTotal.toLocaleString()}`, col2, y+14)
     doc.setFont('helvetica','normal')
-    doc.text(`Subtotal viáticos:`, col1x, y+21)
-    doc.setFont('helvetica','bold'); doc.text(`$${subtotalServicios.toLocaleString()}`, col2x, y+21)
+    doc.text(`Subtotal viáticos:`, col1, y+21)
+    doc.setFont('helvetica','bold'); doc.text(`$${subtotalServicios.toLocaleString()}`, col2, y+21)
     doc.setFont('helvetica','normal')
-    doc.text(`Total bonos:`, col1x, y+28)
-    doc.setFont('helvetica','bold'); doc.text(`$${totalBonos.toLocaleString()}`, col2x, y+28)
+    doc.text(`Total bonos:`, col1, y+28)
+    doc.setFont('helvetica','bold'); doc.text(`$${totalBonos.toLocaleString()}`, col2, y+28)
     doc.setFont('helvetica','normal')
-    if (totalExtras > 0) {
-      doc.text(`Extras:`, col1x, y+35)
-      doc.setFont('helvetica','bold'); doc.text(`$${totalExtras.toLocaleString()}`, col2x, y+35)
+    if (totalFestivos>0) {
+      doc.setTextColor(180,140,0)
+      doc.text(`Días festivos:`, col1, y+35)
+      doc.setFont('helvetica','bold'); doc.text(`$${totalFestivos.toLocaleString()}`, col2, y+35)
+      doc.setFont('helvetica','normal'); doc.setTextColor(0,0,0)
+    }
+    if (totalExtras>0) {
+      doc.text(`Extras:`, col1, y+42)
+      doc.setFont('helvetica','bold'); doc.text(`$${totalExtras.toLocaleString()}`, col2, y+42)
       doc.setFont('helvetica','normal')
     }
-    if (totalDescuentos > 0) {
-      doc.setTextColor(200, 50, 50)
-      doc.text(`Descuentos:`, col1x, y+42)
-      doc.setFont('helvetica','bold'); doc.text(`-$${totalDescuentos.toLocaleString()}`, col2x, y+42)
+    if (totalDescuentos>0) {
+      doc.setTextColor(200,50,50)
+      doc.text(`Descuentos:`, col1, y+49)
+      doc.setFont('helvetica','bold'); doc.text(`-$${totalDescuentos.toLocaleString()}`, col2, y+49)
       doc.setFont('helvetica','normal'); doc.setTextColor(0,0,0)
     }
 
-    // TOTAL DESTACADO
-    doc.setFillColor(67, 56, 202)
-    doc.rect(col3x - 5, y + 6, 61, 14, 'F')
-    doc.setTextColor(255, 255, 255)
-    doc.setFontSize(9); doc.setFont('helvetica', 'normal')
-    doc.text('TOTAL A PAGAR', col3x, y + 12)
-    doc.setFontSize(13); doc.setFont('helvetica', 'bold')
-    doc.text(`$${totalPagar.toLocaleString()}`, col3x, y + 18)
-    doc.setTextColor(0, 0, 0)
-
-    doc.setFont('helvetica','normal'); doc.setFontSize(9)
-    doc.text(`Pago transferencia: $${pagoTransferencia.toLocaleString()}`, col3x, y + 28)
-    doc.text(`Pago efectivo: $${pagoEfectivo.toLocaleString()}`, col3x, y + 35)
-    const colorSaldo = saldoPendiente > 0 ? [200, 50, 50] : [50, 150, 80]
-    doc.setTextColor(colorSaldo[0], colorSaldo[1], colorSaldo[2])
-    doc.setFont('helvetica','bold')
-    doc.text(`Saldo pendiente: $${saldoPendiente.toLocaleString()}`, col3x, y + 42)
+    doc.setFillColor(67,56,202)
+    doc.rect(col3-5, y+6, 61, 14, 'F')
+    doc.setTextColor(255,255,255)
+    doc.setFontSize(9); doc.setFont('helvetica','normal')
+    doc.text('TOTAL A PAGAR', col3, y+12)
+    doc.setFontSize(13); doc.setFont('helvetica','bold')
+    doc.text(`$${totalPagar.toLocaleString()}`, col3, y+18)
+    doc.setTextColor(0,0,0); doc.setFont('helvetica','normal'); doc.setFontSize(9)
+    doc.text(`Pago transferencia: $${pagoTransferencia.toLocaleString()}`, col3, y+28)
+    doc.text(`Pago efectivo: $${pagoEfectivo.toLocaleString()}`, col3, y+35)
+    const cs = saldoPendiente>0?[200,50,50]:[50,150,80]
+    doc.setTextColor(cs[0],cs[1],cs[2]); doc.setFont('helvetica','bold')
+    doc.text(`Saldo pendiente: $${saldoPendiente.toLocaleString()}`, col3, y+42)
     doc.setTextColor(0,0,0); doc.setFont('helvetica','normal')
 
-    y += 68
-
-    // BLOQUE DE FIRMAS
+    y += 73
     if (y > 220) { doc.addPage(); y = 20 }
-
-    doc.setFillColor(250, 250, 252)
+    doc.setFillColor(250,250,252)
     doc.rect(15, y, 186, 45, 'F')
-    doc.setDrawColor(200, 200, 210)
+    doc.setDrawColor(200,200,210)
     doc.rect(15, y, 186, 45, 'S')
     doc.setFontSize(10); doc.setFont('helvetica','bold')
-    doc.text('RECIBÍ DE CONFORMIDAD', 108, y+7, { align: 'center' })
+    doc.text('RECIBÍ DE CONFORMIDAD', 108, y+7, {align:'center'})
     doc.setFont('helvetica','normal'); doc.setFontSize(8)
-    doc.text(`Operador: ${op?.nombre?.toUpperCase() || ''}`, 20, y+16)
-    doc.line(20, y+26, 95, y+26)
-    doc.line(110, y+26, 195, y+26)
-    doc.text('Firma del operador', 20, y+31)
-    doc.text('Entregó', 110, y+31)
-    doc.line(20, y+40, 95, y+40)
-    doc.line(110, y+40, 195, y+40)
-    doc.text('Fecha', 20, y+44)
-    doc.text('Observaciones', 110, y+44)
-
-    // PIE DE PÁGINA
+    doc.text(`Operador: ${op?.nombre?.toUpperCase()||''}`, 20, y+16)
+    doc.line(20, y+26, 95, y+26); doc.line(110, y+26, 195, y+26)
+    doc.text('Firma del operador', 20, y+31); doc.text('Entregó', 110, y+31)
+    doc.line(20, y+40, 95, y+40); doc.line(110, y+40, 195, y+40)
+    doc.text('Fecha', 20, y+44); doc.text('Observaciones', 110, y+44)
     doc.setFontSize(7); doc.setTextColor(150,150,150)
-    doc.text(`Generado por Turiticket Operaciones · ${new Date().toLocaleString('es-MX')}`, 108, 275, { align: 'center' })
+    doc.text(`Generado por Turiticket Operaciones · ${new Date().toLocaleString('es-MX')}`, 108, 275, {align:'center'})
 
     doc.save(`Pago_${op?.nombre||'operador'}_${fechaInicio}_al_${fechaFin}.pdf`)
   }
@@ -490,10 +455,9 @@ export default function Calculadora() {
                         <th className="px-3 py-3 text-left">Destino</th>
                         <th className="px-3 py-3 text-left">Tipo</th>
                         <th className="px-3 py-3 text-center">Viáticos</th>
-                        <th className="px-3 py-3 text-center">🧹 Limp</th>
-                        <th className="px-3 py-3 text-center">⏰ Punt</th>
+                        <th className="px-3 py-3 text-center">✓ Bono</th>
+                        <th className="px-3 py-3 text-center text-yellow-400">🎉 Festivo</th>
                         <th className="px-3 py-3 text-center">Extra</th>
-                        <th className="px-3 py-3 text-center text-yellow-400">🎉 Fest.</th>
                         <th className="px-3 py-3 text-center">Desc.</th>
                         <th className="px-3 py-3 text-center font-bold text-white">Total</th>
                         <th className="px-3 py-3"></th>
@@ -522,21 +486,18 @@ export default function Calculadora() {
                               {!esInactivo ? <input type="number" value={f.pago_base||0} onChange={e => actualizarFila(i,'pago_base',parseFloat(e.target.value)||0)} className="bg-gray-800 border border-gray-700 rounded px-1 py-1 text-xs text-white w-16 text-center" /> : <span className="text-gray-600">—</span>}
                             </td>
                             <td className="px-3 py-2 text-center">
-                              {derecho ? <button onClick={() => actualizarFila(i,'bono_limpieza',!f.bono_limpieza)} className={`text-lg font-bold ${f.bono_limpieza?'text-green-400':'text-red-400'}`}>{f.bono_limpieza?'✓':'✗'}</button> : <span className="text-gray-600">—</span>}
+                              {derecho ? <button onClick={() => actualizarFila(i,'bono',!f.bono)} className={`text-lg font-bold ${f.bono?'text-green-400':'text-red-400'}`}>{f.bono?'✓':'✗'}</button> : <span className="text-gray-600">—</span>}
                             </td>
                             <td className="px-3 py-2 text-center">
-                              {derecho ? <button onClick={() => actualizarFila(i,'bono_puntualidad',!f.bono_puntualidad)} className={`text-lg font-bold ${f.bono_puntualidad?'text-green-400':'text-red-400'}`}>{f.bono_puntualidad?'✓':'✗'}</button> : <span className="text-gray-600">—</span>}
+                              <input type="number" value={f.festivo||0} onChange={e => actualizarFila(i,'festivo',parseFloat(e.target.value)||0)} className="bg-gray-800 border border-gray-700 rounded px-1 py-1 text-xs text-yellow-300 w-16 text-center" />
                             </td>
                             <td className="px-3 py-2 text-center">
                               {!esInactivo ? <input type="number" value={f.extra||0} onChange={e => actualizarFila(i,'extra',parseFloat(e.target.value)||0)} className="bg-gray-800 border border-gray-700 rounded px-1 py-1 text-xs text-white w-14 text-center" /> : <span className="text-gray-600">—</span>}
                             </td>
                             <td className="px-3 py-2 text-center">
-                              <input type="number" value={f.festivo||0} onChange={e => actualizarFila(i,'festivo',parseFloat(e.target.value)||0)} className="bg-gray-800 border border-gray-700 rounded px-1 py-1 text-xs text-yellow-300 w-14 text-center" />
-                            </td>
-                            <td className="px-3 py-2 text-center">
                               <input type="number" value={f.descuento||0} onChange={e => actualizarFila(i,'descuento',parseFloat(e.target.value)||0)} className="bg-gray-800 border border-gray-700 rounded px-1 py-1 text-xs text-white w-14 text-center" />
                             </td>
-                            <td className="px-3 py-2 text-center font-bold text-green-400">{esInactivo?'—':`$${totalFila(f)}`}</td>
+                            <td className="px-3 py-2 text-center font-bold text-green-400">{esInactivo && !f.festivo?'—':`$${totalFila(f)}`}</td>
                             <td className="px-3 py-2"><button onClick={() => eliminarFila(i)} className="text-gray-500 hover:text-red-400">×</button></td>
                           </tr>
                         )
@@ -555,8 +516,8 @@ export default function Calculadora() {
                     <div className="flex justify-between"><span className="text-gray-400">Sueldo base ({diasPeriodo}d)</span><span className="font-medium">${sueldoTotal.toLocaleString()}</span></div>
                     <div className="flex justify-between"><span className="text-gray-400">Viáticos</span><span>${subtotalServicios.toLocaleString()}</span></div>
                     <div className="flex justify-between"><span className="text-gray-400">Bonos</span><span>${totalBonos.toLocaleString()}</span></div>
-                    {totalExtras>0&&<div className="flex justify-between"><span className="text-gray-400">Extras</span><span>${totalExtras.toLocaleString()}</span></div>}
                     {totalFestivos>0&&<div className="flex justify-between text-yellow-400"><span>Días festivos</span><span>${totalFestivos.toLocaleString()}</span></div>}
+                    {totalExtras>0&&<div className="flex justify-between"><span className="text-gray-400">Extras</span><span>${totalExtras.toLocaleString()}</span></div>}
                     {totalDescuentos>0&&<div className="flex justify-between text-red-400"><span>Descuentos</span><span>-${totalDescuentos.toLocaleString()}</span></div>}
                     <div className="flex justify-between font-bold text-green-400 text-base border-t border-gray-700 pt-2 mt-2"><span>TOTAL A PAGAR</span><span>${totalPagar.toLocaleString()}</span></div>
                   </div>
