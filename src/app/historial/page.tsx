@@ -1,7 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { createClient } from '@supabase/supabase-js'
-import Link from 'next/link'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -9,11 +8,22 @@ const supabase = createClient(
 )
 
 const TIPO_COLOR: any = {
-  tour: { bg: 'bg-purple-900', text: 'text-purple-200', label: 'Tour' },
-  transfer: { bg: 'bg-blue-900', text: 'text-blue-200', label: 'Transfer' },
-  renta: { bg: 'bg-amber-900', text: 'text-amber-200', label: 'Renta' },
-  local: { bg: 'bg-green-900', text: 'text-green-200', label: 'Local' },
-  oficina: { bg: 'bg-gray-700', text: 'text-gray-200', label: 'Oficina' },
+  tour:     { bg: 'bg-purple-900', text: 'text-purple-200', label: 'Tour' },
+  transfer: { bg: 'bg-blue-900',   text: 'text-blue-200',   label: 'Transfer' },
+  renta:    { bg: 'bg-amber-900',  text: 'text-amber-200',  label: 'Renta' },
+  local:    { bg: 'bg-green-900',  text: 'text-green-200',  label: 'Local' },
+  oficina:  { bg: 'bg-gray-700',   text: 'text-gray-300',   label: 'Oficina' },
+}
+
+function getTipoColor(tipo: string, destino: string, nota: string) {
+  const d = destino?.toLowerCase() || ''
+  const n = nota?.toLowerCase() || ''
+  if (d.includes('descanso')) return { bg: 'bg-gray-800', text: 'text-gray-500', label: 'Descanso' }
+  if (d.includes('vacacion')) return { bg: 'bg-blue-950', text: 'text-blue-400', label: 'Vacaciones' }
+  if (d.includes('falta'))    return { bg: 'bg-red-950',  text: 'text-red-400',  label: 'Falta' }
+  if (d.includes('a. gaby') || d.includes('a. oficina') || d.includes('s. puebla') || n.includes('jornada')) 
+    return { bg: 'bg-slate-700', text: 'text-slate-300', label: 'Jornada 8H' }
+  return TIPO_COLOR[tipo] || { bg: 'bg-gray-700', text: 'text-gray-300', label: tipo }
 }
 
 export default function Historial() {
@@ -48,18 +58,18 @@ export default function Historial() {
   }
 
   const dias = diasDelMes()
-
   const porOperadorYDia = (opId: string, fecha: string) =>
     asignaciones.filter(a => a.operador_id === opId && a.fecha === fecha)
 
   const resumenOperador = (opId: string) => {
     const asig = asignaciones.filter(a => a.operador_id === opId)
     return {
-      tours: asig.filter(a => a.tipo === 'tour').length,
+      tours:     asig.filter(a => a.tipo === 'tour').length,
       transfers: asig.filter(a => a.tipo === 'transfer').length,
-      rentas: asig.filter(a => a.tipo === 'renta').length,
-      locales: asig.filter(a => a.tipo === 'local').length,
-      total: asig.length,
+      rentas:    asig.filter(a => a.tipo === 'renta').length,
+      locales:   asig.filter(a => a.tipo === 'local').length,
+      descansos: asig.filter(a => a.destino?.toLowerCase().includes('descanso')).length,
+      total:     asig.length,
     }
   }
 
@@ -76,11 +86,25 @@ export default function Historial() {
             <h1 className="text-2xl font-semibold">Historial de operadores</h1>
             <p className="text-gray-400 text-sm">Vista mensual por operador</p>
           </div>
-          <div className="flex gap-3 items-center">
-            <input type="month" value={mes} onChange={e => setMes(e.target.value)}
-              className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white" />
-            <Link href="/" className="bg-gray-800 hover:bg-gray-700 border border-gray-700 px-4 py-2 rounded-lg text-sm">← Asignaciones</Link>
-          </div>
+          <input type="month" value={mes} onChange={e => setMes(e.target.value)}
+            className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white" />
+        </div>
+
+        {/* Leyenda */}
+        <div className="flex gap-2 flex-wrap mb-4">
+          {[
+            { bg:'bg-purple-900', text:'text-purple-200', label:'Tour foráneo' },
+            { bg:'bg-amber-900',  text:'text-amber-200',  label:'Renta' },
+            { bg:'bg-green-900',  text:'text-green-200',  label:'Local' },
+            { bg:'bg-blue-900',   text:'text-blue-200',   label:'Transfer' },
+            { bg:'bg-gray-700',   text:'text-gray-300',   label:'Oficina' },
+            { bg:'bg-slate-700',  text:'text-slate-300',  label:'Jornada 8H' },
+            { bg:'bg-blue-950',   text:'text-blue-400',   label:'Vacaciones' },
+            { bg:'bg-gray-800',   text:'text-gray-500',   label:'Descanso' },
+            { bg:'bg-red-950',    text:'text-red-400',    label:'Falta' },
+          ].map(c => (
+            <span key={c.label} className={`${c.bg} ${c.text} text-xs px-2 py-1 rounded`}>{c.label}</span>
+          ))}
         </div>
 
         {/* Resumen por operador */}
@@ -95,6 +119,7 @@ export default function Historial() {
                   <div className="flex justify-between"><span>Transfers</span><span className="text-blue-400 font-medium">{r.transfers}</span></div>
                   <div className="flex justify-between"><span>Rentas</span><span className="text-amber-400 font-medium">{r.rentas}</span></div>
                   <div className="flex justify-between"><span>Locales</span><span className="text-green-400 font-medium">{r.locales}</span></div>
+                  <div className="flex justify-between"><span>Descansos</span><span className="text-gray-500 font-medium">{r.descansos}</span></div>
                   <div className="flex justify-between border-t border-gray-700 pt-1 mt-1"><span>Total días</span><span className="text-white font-medium">{r.total}</span></div>
                 </div>
               </div>
@@ -133,11 +158,13 @@ export default function Historial() {
                           ) : (
                             <div className="flex flex-col gap-0.5">
                               {servicios.map((s, idx) => {
-                                const c = TIPO_COLOR[s.tipo] || TIPO_COLOR.oficina
+                                const c = getTipoColor(s.tipo, s.destino || '', s.nota || '')
                                 return (
                                   <div key={idx} className={`${c.bg} ${c.text} rounded px-1 py-0.5 text-center leading-tight`}>
                                     <div className="font-medium">{c.label}</div>
-                                    {s.destino && <div className="opacity-75 truncate max-w-14">{s.destino}</div>}
+                                    {s.destino && !['DESCANSO','VACACIONES','FALTA'].includes(s.destino?.toUpperCase()) && (
+                                      <div className="opacity-75 truncate max-w-14">{s.destino}</div>
+                                    )}
                                   </div>
                                 )
                               })}
