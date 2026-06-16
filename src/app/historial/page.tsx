@@ -21,7 +21,7 @@ function getTipoColor(tipo: string, destino: string, nota: string) {
   if (d.includes('descanso')) return { bg: 'bg-gray-800', text: 'text-gray-500', label: 'Descanso' }
   if (d.includes('vacacion')) return { bg: 'bg-blue-950', text: 'text-blue-400', label: 'Vacaciones' }
   if (d.includes('falta'))    return { bg: 'bg-red-950',  text: 'text-red-400',  label: 'Falta' }
-  if (d.includes('a. gaby') || d.includes('a. oficina') || d.includes('s. puebla') || n.includes('jornada')) 
+  if (d.includes('a. gaby') || d.includes('a. oficina') || d.includes('s. puebla') || n.includes('jornada'))
     return { bg: 'bg-slate-700', text: 'text-slate-300', label: 'Jornada 8H' }
   return TIPO_COLOR[tipo] || { bg: 'bg-gray-700', text: 'text-gray-300', label: tipo }
 }
@@ -38,11 +38,17 @@ export default function Historial() {
     setLoading(true)
     const inicio = `${mes}-01`
     const fin = `${mes}-31`
-    const { data: ops } = await supabase.from('operadores').select('*').eq('activo', true).order('nombre')
-    const { data: asig } = await supabase.from('asignaciones')
-      .select('*, operadores(nombre), unidades(nombre)')
-      .gte('fecha', inicio).lte('fecha', fin)
-      .order('fecha')
+    const { data: ops } = await supabase
+      .from('operadores')
+      .select('id, nombre')
+      .eq('activo', true)
+      .order('nombre', { ascending: true })
+    const { data: asig } = await supabase
+      .from('asignaciones')
+      .select('id, fecha, tipo, destino, nota, operador_id, unidad_id, unidades(nombre)')
+      .gte('fecha', inicio)
+      .lte('fecha', fin)
+      .order('fecha', { ascending: true })
     if (ops) setOperadores(ops)
     if (asig) setAsignaciones(asig)
     setLoading(false)
@@ -58,6 +64,7 @@ export default function Historial() {
   }
 
   const dias = diasDelMes()
+
   const porOperadorYDia = (opId: string, fecha: string) =>
     asignaciones.filter(a => a.operador_id === opId && a.fecha === fecha)
 
@@ -90,7 +97,6 @@ export default function Historial() {
             className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white" />
         </div>
 
-        {/* Leyenda */}
         <div className="flex gap-2 flex-wrap mb-4">
           {[
             { bg:'bg-purple-900', text:'text-purple-200', label:'Tour foráneo' },
@@ -107,7 +113,6 @@ export default function Historial() {
           ))}
         </div>
 
-        {/* Resumen por operador */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
           {operadores.map(op => {
             const r = resumenOperador(op.id)
@@ -127,7 +132,6 @@ export default function Historial() {
           })}
         </div>
 
-        {/* Tabla calendario */}
         {loading ? (
           <div className="text-center text-gray-400 py-12">Cargando...</div>
         ) : (
