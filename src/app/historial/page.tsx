@@ -1,4 +1,5 @@
 'use client'
+
 import { useState, useEffect } from 'react'
 import { createClient } from '@supabase/supabase-js'
 
@@ -16,11 +17,11 @@ const TIPO_COLOR: any = {
 }
 
 function getTipoColor(tipo: string, destino: string, nota: string) {
-  const d = destino?.toLowerCase() || ''
-  const n = nota?.toLowerCase() || ''
-  if (d.includes('descanso')) return { bg: 'bg-gray-800', text: 'text-gray-500', label: 'Descanso' }
-  if (d.includes('vacacion')) return { bg: 'bg-blue-950', text: 'text-blue-400', label: 'Vacaciones' }
-  if (d.includes('falta'))    return { bg: 'bg-red-950',  text: 'text-red-400',  label: 'Falta' }
+  const d = (destino || '').toLowerCase()
+  const n = (nota || '').toLowerCase()
+  if (d.includes('descanso')) return { bg: 'bg-gray-800',  text: 'text-gray-500',  label: 'Descanso' }
+  if (d.includes('vacacion')) return { bg: 'bg-blue-950',  text: 'text-blue-400',  label: 'Vacaciones' }
+  if (d.includes('falta'))    return { bg: 'bg-red-950',   text: 'text-red-400',   label: 'Falta' }
   if (d.includes('a. gaby') || d.includes('a. oficina') || d.includes('s. puebla') || n.includes('jornada'))
     return { bg: 'bg-slate-700', text: 'text-slate-300', label: 'Jornada 8H' }
   return TIPO_COLOR[tipo] || { bg: 'bg-gray-700', text: 'text-gray-300', label: tipo }
@@ -37,39 +38,45 @@ export default function Historial() {
   async function cargar() {
     setLoading(true)
     const inicio = `${mes}-01`
-    const fin = `${mes}-31`
+    const [anio, mesNum] = mes.split('-').map(Number)
+    const ultimoDia = new Date(anio, mesNum, 0).getDate()
+    const fin = `${mes}-${ultimoDia}`
+
     const { data: ops } = await supabase
       .from('operadores')
       .select('id, nombre')
       .eq('activo', true)
       .order('nombre', { ascending: true })
-    const { data: asig } = await supabase
+
+    const { data: asig, error } = await supabase
       .from('asignaciones')
-      .select('id, fecha, tipo, destino, nota, operador_id, unidad_id, unidades(nombre)')
+      .select('id, fecha, tipo, destino, nota, operador_id, unidad_id')
       .gte('fecha', inicio)
       .lte('fecha', fin)
       .order('fecha', { ascending: true })
+
+    if (error) console.error('Error cargando asignaciones:', error)
     if (ops) setOperadores(ops)
     if (asig) setAsignaciones(asig)
     setLoading(false)
   }
 
   const diasDelMes = () => {
-    const [y, m] = mes.split('-').map(Number)
-    const total = new Date(y, m, 0).getDate()
-    return Array.from({ length: total }, (_, i) => {
-      const d = String(i + 1).padStart(2, '0')
-      return `${mes}-${d}`
+    const [anio, mesNum] = mes.split('-').map(Number)
+    const ultimoDia = new Date(anio, mesNum, 0).getDate()
+    return Array.from({ length: ultimoDia }, (_, i) => {
+      const d = i + 1
+      return `${mes}-${String(d).padStart(2, '0')}`
     })
   }
 
   const dias = diasDelMes()
 
-  const porOperadorYDia = (opId: string, fecha: string) =>
-    asignaciones.filter(a => a.operador_id === opId && a.fecha === fecha)
+  const serviciosPorOperadorDia = (operadorId: string, fecha: string) =>
+    asignaciones.filter(a => a.operador_id === operadorId && a.fecha === fecha)
 
-  const resumenOperador = (opId: string) => {
-    const asig = asignaciones.filter(a => a.operador_id === opId)
+  const conteoOperador = (operadorId: string) => {
+    const asig = asignaciones.filter(a => a.operador_id === operadorId)
     return {
       tours:     asig.filter(a => a.tipo === 'tour').length,
       transfers: asig.filter(a => a.tipo === 'transfer').length,
@@ -80,108 +87,114 @@ export default function Historial() {
     }
   }
 
-  const nombreDia = (fecha: string) => {
-    const d = new Date(fecha + 'T12:00:00')
-    return d.toLocaleDateString('es-MX', { weekday: 'short', day: 'numeric' })
-  }
+  const nombreMes = new Date(`${mes}-15`).toLocaleString('es-MX', { month: 'long', year: 'numeric' })
 
   return (
     <div className="min-h-screen bg-gray-950 text-white p-4">
-      <div className="max-w-full mx-auto">
+      <div className="max-w-screen-2xl mx-auto">
+
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-semibold">Historial de operadores</h1>
             <p className="text-gray-400 text-sm">Vista mensual por operador</p>
           </div>
-          <input type="month" value={mes} onChange={e => setMes(e.target.value)}
-            className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white" />
+          <input
+            type="month"
+            value={mes}
+            onChange={e => setMes(e.target.value)}
+            className="bg-gray-800 border border-gray-700 text-white px-3 py-2 rounded-lg"
+          />
         </div>
 
-        <div className="flex gap-2 flex-wrap mb-4">
-          {[
-            { bg:'bg-purple-900', text:'text-purple-200', label:'Tour foráneo' },
-            { bg:'bg-amber-900',  text:'text-amber-200',  label:'Renta' },
-            { bg:'bg-green-900',  text:'text-green-200',  label:'Local' },
-            { bg:'bg-blue-900',   text:'text-blue-200',   label:'Transfer' },
-            { bg:'bg-gray-700',   text:'text-gray-300',   label:'Oficina' },
-            { bg:'bg-slate-700',  text:'text-slate-300',  label:'Jornada 8H' },
-            { bg:'bg-blue-950',   text:'text-blue-400',   label:'Vacaciones' },
-            { bg:'bg-gray-800',   text:'text-gray-500',   label:'Descanso' },
-            { bg:'bg-red-950',    text:'text-red-400',    label:'Falta' },
-          ].map(c => (
-            <span key={c.label} className={`${c.bg} ${c.text} text-xs px-2 py-1 rounded`}>{c.label}</span>
+        <div className="flex flex-wrap gap-2 mb-6">
+          {Object.entries(TIPO_COLOR).map(([k, v]: any) => (
+            <span key={k} className={`${v.bg} ${v.text} text-xs px-3 py-1 rounded-full font-medium`}>{v.label}</span>
           ))}
+          <span className="bg-gray-800 text-gray-500 text-xs px-3 py-1 rounded-full font-medium">Descanso</span>
+          <span className="bg-blue-950 text-blue-400 text-xs px-3 py-1 rounded-full font-medium">Vacaciones</span>
+          <span className="bg-red-950 text-red-400 text-xs px-3 py-1 rounded-full font-medium">Falta</span>
+          <span className="bg-slate-700 text-slate-300 text-xs px-3 py-1 rounded-full font-medium">Jornada 8H</span>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
-          {operadores.map(op => {
-            const r = resumenOperador(op.id)
-            return (
-              <div key={op.id} className="bg-gray-900 rounded-xl p-3">
-                <p className="font-medium text-sm mb-2">{op.nombre}</p>
-                <div className="space-y-1 text-xs text-gray-400">
-                  <div className="flex justify-between"><span>Tours</span><span className="text-purple-400 font-medium">{r.tours}</span></div>
-                  <div className="flex justify-between"><span>Transfers</span><span className="text-blue-400 font-medium">{r.transfers}</span></div>
-                  <div className="flex justify-between"><span>Rentas</span><span className="text-amber-400 font-medium">{r.rentas}</span></div>
-                  <div className="flex justify-between"><span>Locales</span><span className="text-green-400 font-medium">{r.locales}</span></div>
-                  <div className="flex justify-between"><span>Descansos</span><span className="text-gray-500 font-medium">{r.descansos}</span></div>
-                  <div className="flex justify-between border-t border-gray-700 pt-1 mt-1"><span>Total días</span><span className="text-white font-medium">{r.total}</span></div>
-                </div>
-              </div>
-            )
-          })}
-        </div>
+        {loading && <p className="text-gray-400">Cargando...</p>}
 
-        {loading ? (
-          <div className="text-center text-gray-400 py-12">Cargando...</div>
-        ) : (
-          <div className="overflow-x-auto rounded-xl border border-gray-800">
-            <table className="w-full text-xs border-collapse">
-              <thead>
-                <tr className="bg-gray-900">
-                  <th className="text-left px-3 py-2 text-gray-400 font-medium sticky left-0 bg-gray-900 z-10 w-24">Operador</th>
-                  {dias.map(d => (
-                    <th key={d} className="px-1 py-2 text-gray-400 font-medium text-center min-w-16">
-                      {nombreDia(d)}
+        {!loading && (
+          <>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-8">
+              {operadores.map(op => {
+                const c = conteoOperador(op.id)
+                return (
+                  <div key={op.id} className="bg-gray-900 rounded-xl p-3 text-sm">
+                    <div className="font-semibold mb-2">{op.nombre}</div>
+                    <div className="text-purple-300">Tours <span className="font-bold">{c.tours}</span></div>
+                    <div className="text-blue-300">Transfers <span className="font-bold">{c.transfers}</span></div>
+                    <div className="text-amber-300">Rentas <span className="font-bold">{c.rentas}</span></div>
+                    <div className="text-green-300">Locales <span className="font-bold">{c.locales}</span></div>
+                    <div className="text-gray-400">Descansos <span className="font-bold">{c.descansos}</span></div>
+                    <div className="mt-2 pt-2 border-t border-gray-700 text-gray-200">
+                      Total <span className="font-bold">{c.total}</span> días
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="text-xs border-collapse w-full">
+                <thead>
+                  <tr>
+                    <th className="bg-gray-900 text-gray-400 px-2 py-2 text-left sticky left-0 z-10 min-w-[80px]">
+                      {nombreMes}
                     </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {operadores.map((op, i) => (
-                  <tr key={op.id} className={i % 2 === 0 ? 'bg-gray-950' : 'bg-gray-900'}>
-                    <td className={`px-3 py-2 font-medium sticky left-0 z-10 ${i % 2 === 0 ? 'bg-gray-950' : 'bg-gray-900'}`}>
-                      {op.nombre}
-                    </td>
                     {dias.map(d => {
-                      const servicios = porOperadorYDia(op.id, d)
+                      const fecha = new Date(`${d}T12:00:00`)
+                      const diaSemana = fecha.toLocaleString('es-MX', { weekday: 'short' })
+                      const diaN = fecha.getDate()
+                      const esFinSemana = fecha.getDay() === 0 || fecha.getDay() === 6
                       return (
-                        <td key={d} className="px-1 py-1 text-center align-top">
-                          {servicios.length === 0 ? (
-                            <span className="text-gray-700">—</span>
-                          ) : (
-                            <div className="flex flex-col gap-0.5">
-                              {servicios.map((s, idx) => {
-                                const c = getTipoColor(s.tipo, s.destino || '', s.nota || '')
-                                return (
-                                  <div key={idx} className={`${c.bg} ${c.text} rounded px-1 py-0.5 text-center leading-tight`}>
-                                    <div className="font-medium">{c.label}</div>
-                                    {s.destino && !['DESCANSO','VACACIONES','FALTA'].includes(s.destino?.toUpperCase()) && (
-                                      <div className="opacity-75 truncate max-w-14">{s.destino}</div>
-                                    )}
-                                  </div>
-                                )
-                              })}
-                            </div>
-                          )}
-                        </td>
+                        <th key={d} className={`px-1 py-2 text-center min-w-[36px] ${esFinSemana ? 'bg-gray-800' : 'bg-gray-900'} text-gray-400`}>
+                          <div>{diaN}</div>
+                          <div className="text-gray-600">{diaSemana}</div>
+                        </th>
                       )
                     })}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {operadores.map((op, i) => (
+                    <tr key={op.id} className={i % 2 === 0 ? 'bg-gray-950' : 'bg-gray-900'}>
+                      <td className="px-2 py-1 font-medium sticky left-0 z-10 bg-inherit">{op.nombre}</td>
+                      {dias.map(d => {
+                        const servicios = serviciosPorOperadorDia(op.id, d)
+                        const esFinSemana = new Date(`${d}T12:00:00`).getDay() === 0 || new Date(`${d}T12:00:00`).getDay() === 6
+                        return (
+                          <td key={d} className={`px-0.5 py-0.5 align-top ${esFinSemana ? 'opacity-75' : ''}`}>
+                            {servicios.length === 0 ? (
+                              <span className="text-gray-700">—</span>
+                            ) : (
+                              <div className="flex flex-col gap-0.5">
+                                {servicios.map((s, idx) => {
+                                  const c = getTipoColor(s.tipo, s.destino || '', s.nota || '')
+                                  return (
+                                    <div key={idx} className={`${c.bg} ${c.text} rounded px-1 py-0.5 text-center leading-tight`}>
+                                      <div className="font-medium">{c.label}</div>
+                                      {s.destino && !['DESCANSO','VACACIONES','FALTA'].includes(s.destino?.toUpperCase()) && (
+                                        <div className="opacity-75 truncate max-w-[60px]">{s.destino}</div>
+                                      )}
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            )}
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
     </div>
