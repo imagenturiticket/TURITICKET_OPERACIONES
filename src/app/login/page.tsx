@@ -41,7 +41,7 @@ export default function Login() {
               type="text"
               value={usuario}
               onChange={e => setUsuario(e.target.value)}
-              placeholder="zeus"
+              placeholder="Usuario"
               className="w-full bg-gray-800 border border-gray-700 text-white px-4 py-3 rounded-lg focus:outline-none focus:border-indigo-500"
               onKeyDown={e => e.key === 'Enter' && handleLogin()}
             />
