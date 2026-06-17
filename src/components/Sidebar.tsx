@@ -10,6 +10,7 @@ const nav = [
   { href: '/reportes',    icon: '🚨', label: 'Reportes'       },
   { href: '/importar',    icon: '📥', label: 'Importar datos' },
   { href: '/calculadora', icon: '💰', label: 'Calculadora'    },
+  { href: '/vacaciones',  icon: '🏖️', label: 'Vacaciones'    },
 ]
 
 export default function Sidebar() {
