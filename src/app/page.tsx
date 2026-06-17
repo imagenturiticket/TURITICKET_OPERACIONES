@@ -19,6 +19,14 @@ const TIPO_EMOJI: any = {
   tour: '🗺️', transfer: '🚐', renta: '🔑', local: '🏙️', oficina: '🏢'
 }
 
+const TIPO_BG: any = {
+  tour:     'bg-purple-900 text-purple-200',
+  transfer: 'bg-blue-900 text-blue-200',
+  renta:    'bg-amber-900 text-amber-200',
+  local:    'bg-green-900 text-green-200',
+  oficina:  'bg-gray-700 text-gray-300',
+}
+
 const DESTINOS_TOUR = [
   'CATEMACO', 'TAJIN', 'XALAPA', 'ORIZABA', 'CEMPOALA',
   'ROCA', 'ALVARADO', 'CAFE', 'DUNAS', 'RAFTING'
@@ -66,12 +74,10 @@ function FilaAsignacion({ a, operadores, unidades, onChange, onDelete }: any) {
         {operadores.map((o: any) => <option key={o.id} value={o.id}>{o.nombre}</option>)}
       </select>
 
-      {a.tipo !== 'local' && a.tipo !== 'oficina' && (
-        <select value={a.unidad_id || ''} onChange={e => onChange(a.id, 'unidad_id', e.target.value)}
-          className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm text-white">
-          {unidades.map((u: any) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
-        </select>
-      )}
+      <select value={a.unidad_id || ''} onChange={e => onChange(a.id, 'unidad_id', e.target.value)}
+        className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm text-white">
+        {unidades.map((u: any) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+      </select>
 
       <button onClick={() => onDelete(a.id, a.isNew)} className="ml-auto text-gray-500 hover:text-red-400 text-xl leading-none">×</button>
     </div>
@@ -88,6 +94,7 @@ export default function Home() {
   const [guardandoEdicion, setGuardandoEdicion] = useState(false)
   const [mensaje, setMensaje] = useState('')
   const [semana, setSemana] = useState<any[]>([])
+  const [diasSemana, setDiasSemana] = useState<string[]>([])
 
   useEffect(() => { cargarDatos() }, [])
   useEffect(() => { if (fecha) { cargarGuardadas(); cargarSemana() } }, [fecha])
@@ -113,13 +120,21 @@ export default function Home() {
     const dia = d.getDay()
     const lunes = new Date(d)
     lunes.setDate(d.getDate() - (dia === 0 ? 6 : dia - 1))
-    const domingo = new Date(lunes)
-    domingo.setDate(lunes.getDate() + 6)
-    const inicio = lunes.toISOString().split('T')[0]
-    const fin = domingo.toISOString().split('T')[0]
+
+    const dias: string[] = []
+    for (let i = 0; i < 7; i++) {
+      const dd = new Date(lunes)
+      dd.setDate(lunes.getDate() + i)
+      dias.push(dd.toISOString().split('T')[0])
+    }
+    setDiasSemana(dias)
+
+    const inicio = dias[0]
+    const fin = dias[6]
+
     const { data } = await supabase
       .from('asignaciones')
-      .select('*, operadores(nombre)')
+      .select('*, operadores(nombre), unidades(nombre)')
       .gte('fecha', inicio)
       .lte('fecha', fin)
     if (data) setSemana(data)
@@ -254,32 +269,34 @@ export default function Home() {
     setTimeout(() => setMensaje(''), 3000)
   }
 
-  const resumenSemanal = operadores
-    .filter(op => FIJOS.includes(op.nombre))
-    .map(op => {
-      const asig = semana.filter(a => a.operador_id === op.id)
-      const tours = asig.filter(a => a.tipo === 'tour').length
-      const rentas = asig.filter(a => a.tipo === 'renta').length
-      const locales = asig.filter(a => a.tipo === 'local' && !a.destino?.toLowerCase().includes('descanso')).length
-      const transfers = asig.filter(a => a.tipo === 'transfer').length
-      const descansos = asig.filter(a => a.destino?.toLowerCase().includes('descanso')).length
-      const total = asig.length
+  // Helpers para resumen semanal
+  function labelDia(fechaStr: string) {
+    const hoy = new Date().toISOString().split('T')[0]
+    const ayer = new Date(Date.now() - 86400000).toISOString().split('T')[0]
+    const antier = new Date(Date.now() - 172800000).toISOString().split('T')[0]
+    const d = new Date(fechaStr + 'T12:00:00')
+    const nombreDia = d.toLocaleString('es-MX', { weekday: 'short' })
+    const numDia = d.getDate()
+    if (fechaStr === hoy) return `Hoy ${numDia}`
+    if (fechaStr === ayer) return `Ayer ${numDia}`
+    if (fechaStr === antier) return `Antier ${numDia}`
+    return `${nombreDia} ${numDia}`
+  }
 
-      const alertas: string[] = []
-      if (descansos === 0 && total >= 5) alertas.push('⚠️ Sin descanso esta semana')
-      if (locales >= 3) alertas.push('📍 Muchos locales — considera tour')
-      if (rentas >= 3) alertas.push('🔑 Varias rentas — considera dar a otro')
-      if (total === 0) alertas.push('💤 Sin servicios esta semana')
-
-      return { op, tours, rentas, locales, transfers, descansos, total, alertas }
-    })
+  function esFuturo(fechaStr: string) {
+    const hoy = new Date().toISOString().split('T')[0]
+    return fechaStr > hoy
+  }
 
   const tipos = ['tour', 'transfer', 'renta', 'local', 'oficina']
+
+  const fijosOrdenados = operadores.filter(op => FIJOS.includes(op.nombre))
 
   return (
     <div className="min-h-screen bg-gray-950 text-white p-4">
       <div className="max-w-5xl mx-auto space-y-6">
 
+        {/* Header */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-semibold">Asignaciones</h1>
@@ -297,12 +314,14 @@ export default function Home() {
           </div>
         )}
 
+        {/* Selector de fecha */}
         <div className="bg-gray-900 rounded-xl p-4">
           <label className="text-sm text-gray-400 block mb-1">Fecha</label>
           <input type="date" value={fecha} onChange={e => setFecha(e.target.value)}
             className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white" />
         </div>
 
+        {/* Asignaciones guardadas */}
         {guardadas.length > 0 && (
           <div className="bg-gray-900 rounded-xl p-4">
             <div className="flex items-center justify-between mb-3">
@@ -321,6 +340,7 @@ export default function Home() {
           </div>
         )}
 
+        {/* Nueva asignación */}
         <div className="bg-gray-900 rounded-xl p-4">
           <h2 className="text-sm font-semibold text-gray-300 mb-3">➕ Nueva asignación</h2>
           {nuevas.length > 0 && (
@@ -347,24 +367,72 @@ export default function Home() {
           )}
         </div>
 
-        {resumenSemanal.length > 0 && (
+        {/* Resumen semanal por operador */}
+        {fijosOrdenados.length > 0 && diasSemana.length > 0 && (
           <div className="bg-gray-900 rounded-xl p-4">
-            <h2 className="text-sm font-semibold text-gray-300 mb-3">📊 Resumen de la semana</h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-              {resumenSemanal.map(({ op, tours, rentas, locales, transfers, descansos, total, alertas }) => (
-                <div key={op.id} className={`rounded-xl p-3 text-xs ${alertas.length ? 'bg-gray-800 border border-yellow-700' : 'bg-gray-800'}`}>
-                  <div className="font-semibold text-sm mb-2">{op.nombre}</div>
-                  {tours > 0 && <div className="text-purple-300">🗺️ Tours: <span className="font-bold">{tours}</span></div>}
-                  {transfers > 0 && <div className="text-blue-300">🚐 Transfers: <span className="font-bold">{transfers}</span></div>}
-                  {rentas > 0 && <div className="text-amber-300">🔑 Rentas: <span className="font-bold">{rentas}</span></div>}
-                  {locales > 0 && <div className="text-green-300">🏙️ Locales: <span className="font-bold">{locales}</span></div>}
-                  {descansos > 0 && <div className="text-gray-400">💤 Descansos: <span className="font-bold">{descansos}</span></div>}
-                  <div className="mt-1 pt-1 border-t border-gray-700 text-gray-300">Total: <span className="font-bold">{total}</span></div>
-                  {alertas.map((a, i) => (
-                    <div key={i} className="mt-1 text-yellow-400 text-xs">{a}</div>
-                  ))}
-                </div>
-              ))}
+            <h2 className="text-sm font-semibold text-gray-300 mb-4">📊 Semana en detalle</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+              {fijosOrdenados.map(op => {
+                const asigOp = semana.filter(a => a.operador_id === op.id)
+                const alertas: string[] = []
+                const tours = asigOp.filter(a => a.tipo === 'tour').length
+                const rentas = asigOp.filter(a => a.tipo === 'renta').length
+                const locales = asigOp.filter(a => a.tipo === 'local' && !a.destino?.toLowerCase().includes('descanso')).length
+                const descansos = asigOp.filter(a => a.destino?.toLowerCase().includes('descanso')).length
+                if (descansos === 0 && asigOp.length >= 5) alertas.push('⚠️ Sin descanso')
+                if (locales >= 3) alertas.push('📍 Muchos locales')
+                if (rentas >= 3) alertas.push('🔑 Varias rentas')
+
+                return (
+                  <div key={op.id} className={`rounded-xl p-3 text-xs ${alertas.length ? 'bg-gray-800 border border-yellow-700' : 'bg-gray-800'}`}>
+                    <div className="font-semibold text-sm mb-3 text-white">{op.nombre}</div>
+
+                    <div className="space-y-1.5">
+                      {diasSemana.map(d => {
+                        const serviciosDia = asigOp.filter(a => a.fecha === d)
+                        const futuro = esFuturo(d)
+                        const label = labelDia(d)
+
+                        return (
+                          <div key={d} className={`flex gap-2 items-start ${futuro ? 'opacity-40' : ''}`}>
+                            <span className="text-gray-500 w-16 shrink-0 pt-0.5">{label}</span>
+                            <div className="flex flex-col gap-0.5 flex-1">
+                              {serviciosDia.length === 0 ? (
+                                <span className="text-gray-600">—</span>
+                              ) : (
+                                serviciosDia.map((s, i) => {
+                                  const esDescanso = s.destino?.toLowerCase().includes('descanso')
+                                  const esVacaciones = s.destino?.toLowerCase().includes('vacacion')
+                                  const bg = esDescanso ? 'bg-gray-700 text-gray-400' : esVacaciones ? 'bg-blue-900 text-blue-300' : TIPO_BG[s.tipo] || 'bg-gray-700 text-gray-300'
+                                  const texto = esDescanso ? '💤 Descanso' : esVacaciones ? '🏖️ Vacaciones' :
+                                    s.tipo === 'tour' ? `🗺️ ${s.destino}` :
+                                    s.tipo === 'transfer' ? `🚐 Transfer${s.hora_inicio ? ' ' + s.hora_inicio : ''}` :
+                                    s.tipo === 'renta' ? `🔑 Renta${s.hora_inicio ? ' ' + s.hora_inicio : ''}` :
+                                    s.tipo === 'local' ? `🏙️ Locales` :
+                                    s.tipo === 'oficina' ? `🏢 Oficina` : s.tipo
+                                  return (
+                                    <span key={i} className={`${bg} rounded px-1.5 py-0.5 text-xs font-medium`}>
+                                      {texto}
+                                    </span>
+                                  )
+                                })
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+
+                    {alertas.length > 0 && (
+                      <div className="mt-2 pt-2 border-t border-gray-700 space-y-0.5">
+                        {alertas.map((a, i) => (
+                          <div key={i} className="text-yellow-400 text-xs">{a}</div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           </div>
         )}
