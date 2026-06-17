@@ -398,7 +398,13 @@ export default function Home() {
                             <span className="text-gray-500 w-16 shrink-0 pt-0.5">{label}</span>
                             <div className="flex flex-col gap-0.5 flex-1">
                               {serviciosDia.length === 0 ? (
-                                <span className="text-gray-600">—</span>
+                                futuro ? (
+                                  <span className="text-gray-600">—</span>
+                                ) : (
+                                  <span className="bg-gray-700 text-gray-400 rounded px-1.5 py-0.5 text-xs font-medium">
+                                    💤 Descanso
+                                  </span>
+                                )
                               ) : (
                                 serviciosDia.map((s, i) => {
                                   const esDescanso = s.destino?.toLowerCase().includes('descanso')
