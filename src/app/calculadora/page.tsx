@@ -195,36 +195,37 @@ export default function Calculadora() {
     const autoTable = (await import('jspdf-autotable')).default
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' })
 
+    // ENCABEZADO — más compacto (altura 18 en vez de 25)
     doc.setFillColor(67, 56, 202)
-    doc.rect(0, 0, 216, 25, 'F')
+    doc.rect(0, 0, 216, 18, 'F')
     doc.setTextColor(255,255,255)
-    doc.setFontSize(18); doc.setFont('helvetica','bold')
-    doc.text('TURITICKET', 15, 12)
-    doc.setFontSize(10); doc.setFont('helvetica','normal')
-    doc.text('Recibo de Pago Quincenal de Operador', 15, 20)
+    doc.setFontSize(13); doc.setFont('helvetica','bold')
+    doc.text('Recibo de Pago', 15, 11)
     doc.setTextColor(0,0,0)
 
+    // Info operador
     doc.setFontSize(11); doc.setFont('helvetica','bold')
-    doc.text(`Operador: ${op?.nombre?.toUpperCase() || ''}`, 15, 34)
+    doc.text(`Operador: ${op?.nombre?.toUpperCase() || ''}`, 15, 27)
     doc.setFont('helvetica','normal'); doc.setFontSize(9)
     const [yi,mi,di] = fechaInicio.split('-').map(Number)
     const [yf,mf,df] = fechaFin.split('-').map(Number)
-    doc.text(`Periodo: ${di} de ${MESES_ES[mi-1]} al ${df} de ${MESES_ES[mf-1]} de ${yf}`, 15, 40)
-    doc.text(`Fecha de generación: ${new Date().toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}`, 15, 46)
-    doc.text(`Estado: ${estado.toUpperCase()}`, 15, 52)
+    doc.text(`Periodo: ${di} de ${MESES_ES[mi-1]} al ${df} de ${MESES_ES[mf-1]} de ${yf}`, 15, 33)
+    doc.text(`Fecha de generación: ${new Date().toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}`, 15, 39)
+    doc.text(`Estado: ${estado.toUpperCase()}`, 15, 45)
 
     autoTable(doc, {
-      startY: 58,
+      startY: 51,
       head: [['Fecha','Unidad','Destino','Tipo','Viát.','Bono','Festivo','Extra','Desc.','Total']],
       body: filas.map(f => {
         const esTrabajado = !['descanso','vacaciones','falta'].includes(f.tipo_servicio)
+        const bonoMonto = f.bono ? '$100' : '—'
         return [
           formatFechaES(f.fecha),
           f.unidad_nombre||'—',
           f.destino||'—',
           LABEL_TIPO[f.tipo_servicio]||f.tipo_servicio,
           esTrabajado ? `$${f.pago_base}` : '—',
-          BONO_DERECHO[f.tipo_servicio] ? (f.bono?'✓':'✗') : '—',
+          BONO_DERECHO[f.tipo_servicio] ? bonoMonto : '—',
           f.festivo > 0 ? `$${f.festivo}` : '—',
           f.extra > 0 ? `$${f.extra}` : '—',
           f.descuento > 0 ? `-$${f.descuento}` : '—',
@@ -242,89 +243,98 @@ export default function Calculadora() {
       didParseCell: (data: any) => {
         const row = filas[data.row.index]
         if (!row) return
+        // Solo descanso y vacaciones/falta cambian de color; oficina y jornada_8h = color normal
         if (['descanso','vacaciones'].includes(row.tipo_servicio)) {
-          data.cell.styles.fillColor = [45,45,55]; data.cell.styles.textColor = [150,150,160]
+          data.cell.styles.fillColor = [210,210,220]; data.cell.styles.textColor = [100,100,115]
         } else if (row.tipo_servicio === 'falta') {
           data.cell.styles.fillColor = [80,20,20]; data.cell.styles.textColor = [255,150,150]
-        } else if (['oficina','jornada_8h'].includes(row.tipo_servicio)) {
-          data.cell.styles.fillColor = [30,40,60]; data.cell.styles.textColor = [150,170,210]
         }
+        // oficina y jornada_8h sin color especial (fondo normal)
         if (data.column.index === 5 && data.section === 'body') {
-          if (data.cell.text[0]==='✓') data.cell.styles.textColor = [80,200,120]
-          if (data.cell.text[0]==='✗') data.cell.styles.textColor = [220,80,80]
+          if (data.cell.text[0]==='$100') data.cell.styles.textColor = [80,200,120]
+          if (data.cell.text[0]==='—' && BONO_DERECHO[row.tipo_servicio]) data.cell.styles.textColor = [220,80,80]
         }
       }
     })
 
-    let y = (doc as any).lastAutoTable.finalY + 8
+    // RESUMEN DE PAGO — más compacto (altura 42 en vez de 65)
+    let y = (doc as any).lastAutoTable.finalY + 6
     doc.setFillColor(245,245,250)
-    doc.rect(15, y, 186, 65, 'F')
+    doc.rect(15, y, 186, 52, 'F')
     doc.setDrawColor(200,200,210)
-    doc.rect(15, y, 186, 65, 'S')
-    doc.setFontSize(10); doc.setFont('helvetica','bold')
+    doc.rect(15, y, 186, 52, 'S')
+    doc.setFontSize(9); doc.setFont('helvetica','bold')
     doc.setTextColor(67,56,202)
-    doc.text('RESUMEN DE PAGO', 20, y+7)
-    doc.setTextColor(0,0,0); doc.setFont('helvetica','normal'); doc.setFontSize(9)
+    doc.text('RESUMEN DE PAGO', 20, y+6)
+    doc.setTextColor(0,0,0); doc.setFont('helvetica','normal'); doc.setFontSize(8.5)
 
-    const col1=20, col2=90, col3=140
-    doc.text(`Sueldo base (${diasPeriodo} días × $${sueldoBase}):`, col1, y+14)
-    doc.setFont('helvetica','bold'); doc.text(`$${sueldoTotal.toLocaleString()}`, col2, y+14)
+    const col1=20, col2=85, col3=138
+    // Cambio: "TRANSFERENCIA" en vez de "Sueldo base (X días × $Y)"
+    doc.text(`TRANSFERENCIA:`, col1, y+13)
+    doc.setFont('helvetica','bold'); doc.text(`$${sueldoTotal.toLocaleString()}`, col2, y+13)
     doc.setFont('helvetica','normal')
-    doc.text(`Subtotal viáticos:`, col1, y+21)
-    doc.setFont('helvetica','bold'); doc.text(`$${subtotalServicios.toLocaleString()}`, col2, y+21)
+    doc.text(`Subtotal viáticos:`, col1, y+20)
+    doc.setFont('helvetica','bold'); doc.text(`$${subtotalServicios.toLocaleString()}`, col2, y+20)
     doc.setFont('helvetica','normal')
-    doc.text(`Total bonos:`, col1, y+28)
-    doc.setFont('helvetica','bold'); doc.text(`$${totalBonos.toLocaleString()}`, col2, y+28)
+    doc.text(`Total bonos:`, col1, y+27)
+    doc.setFont('helvetica','bold'); doc.text(`$${totalBonos.toLocaleString()}`, col2, y+27)
     doc.setFont('helvetica','normal')
     if (totalFestivos>0) {
       doc.setTextColor(180,140,0)
-      doc.text(`Días festivos:`, col1, y+35)
-      doc.setFont('helvetica','bold'); doc.text(`$${totalFestivos.toLocaleString()}`, col2, y+35)
+      doc.text(`Días festivos:`, col1, y+34)
+      doc.setFont('helvetica','bold'); doc.text(`$${totalFestivos.toLocaleString()}`, col2, y+34)
       doc.setFont('helvetica','normal'); doc.setTextColor(0,0,0)
     }
     if (totalExtras>0) {
-      doc.text(`Extras:`, col1, y+42)
-      doc.setFont('helvetica','bold'); doc.text(`$${totalExtras.toLocaleString()}`, col2, y+42)
+      doc.text(`Extras:`, col1, y+34)
+      doc.setFont('helvetica','bold'); doc.text(`$${totalExtras.toLocaleString()}`, col2, y+34)
       doc.setFont('helvetica','normal')
     }
     if (totalDescuentos>0) {
       doc.setTextColor(200,50,50)
-      doc.text(`Descuentos:`, col1, y+49)
-      doc.setFont('helvetica','bold'); doc.text(`-$${totalDescuentos.toLocaleString()}`, col2, y+49)
+      doc.text(`Descuentos:`, col1, y+34)
+      doc.setFont('helvetica','bold'); doc.text(`-$${totalDescuentos.toLocaleString()}`, col2, y+34)
       doc.setFont('helvetica','normal'); doc.setTextColor(0,0,0)
     }
 
+    // Caja TOTAL A PAGAR
     doc.setFillColor(67,56,202)
-    doc.rect(col3-5, y+6, 61, 14, 'F')
+    doc.rect(col3-3, y+4, 62, 13, 'F')
     doc.setTextColor(255,255,255)
-    doc.setFontSize(9); doc.setFont('helvetica','normal')
-    doc.text('TOTAL A PAGAR', col3, y+12)
-    doc.setFontSize(13); doc.setFont('helvetica','bold')
-    doc.text(`$${totalPagar.toLocaleString()}`, col3, y+18)
-    doc.setTextColor(0,0,0); doc.setFont('helvetica','normal'); doc.setFontSize(9)
-    doc.text(`Pago transferencia: $${pagoTransferencia.toLocaleString()}`, col3, y+28)
-    doc.text(`Pago efectivo: $${pagoEfectivo.toLocaleString()}`, col3, y+35)
+    doc.setFontSize(8); doc.setFont('helvetica','normal')
+    doc.text('TOTAL A PAGAR', col3, y+9)
+    doc.setFontSize(12); doc.setFont('helvetica','bold')
+    doc.text(`$${totalPagar.toLocaleString()}`, col3, y+15)
+    doc.setTextColor(0,0,0); doc.setFont('helvetica','normal'); doc.setFontSize(8.5)
+    doc.text(`Pago transferencia: $${pagoTransferencia.toLocaleString()}`, col3, y+24)
+    doc.setDrawColor(100,100,100)
+    doc.line(col3, y+30, col3+55, y+30)
+    doc.setFontSize(7); doc.setTextColor(120,120,120)
+    doc.text('Firma de recibido', col3, y+34)
+    doc.setFontSize(8.5); doc.setTextColor(0,0,0); doc.setFont('helvetica','normal')
+    doc.text(`Pago efectivo: $${pagoEfectivo.toLocaleString()}`, col3, y+40)
     const cs = saldoPendiente>0?[200,50,50]:[50,150,80]
     doc.setTextColor(cs[0],cs[1],cs[2]); doc.setFont('helvetica','bold')
-    doc.text(`Saldo pendiente: $${saldoPendiente.toLocaleString()}`, col3, y+42)
+    doc.text(`Saldo pendiente: $${saldoPendiente.toLocaleString()}`, col3, y+47)
     doc.setTextColor(0,0,0); doc.setFont('helvetica','normal')
 
-    y += 73
-    if (y > 220) { doc.addPage(); y = 20 }
+    // FIRMAS — simplificadas: solo Entregó y Recibió
+    y += 58
+    if (y > 230) { doc.addPage(); y = 20 }
     doc.setFillColor(250,250,252)
-    doc.rect(15, y, 186, 45, 'F')
+    doc.rect(15, y, 186, 30, 'F')
     doc.setDrawColor(200,200,210)
-    doc.rect(15, y, 186, 45, 'S')
-    doc.setFontSize(10); doc.setFont('helvetica','bold')
-    doc.text('RECIBÍ DE CONFORMIDAD', 108, y+7, {align:'center'})
-    doc.setFont('helvetica','normal'); doc.setFontSize(8)
-    doc.text(`Operador: ${op?.nombre?.toUpperCase()||''}`, 20, y+16)
-    doc.line(20, y+26, 95, y+26); doc.line(110, y+26, 195, y+26)
-    doc.text('Firma del operador', 20, y+31); doc.text('Entregó', 110, y+31)
-    doc.line(20, y+40, 95, y+40); doc.line(110, y+40, 195, y+40)
-    doc.text('Fecha', 20, y+44); doc.text('Observaciones', 110, y+44)
+    doc.rect(15, y, 186, 30, 'S')
+    doc.setFontSize(8); doc.setFont('helvetica','normal')
+    // Línea Entregó (izquierda)
+    doc.line(20, y+20, 95, y+20)
+    doc.text('Entregó', 20, y+25)
+    // Línea Recibió (derecha)
+    doc.line(115, y+20, 195, y+20)
+    doc.text('Recibió', 115, y+25)
+
     doc.setFontSize(7); doc.setTextColor(150,150,150)
-    doc.text(`Generado por Turiticket Operaciones · ${new Date().toLocaleString('es-MX')}`, 108, 275, {align:'center'})
+    doc.text(`${new Date().toLocaleString('es-MX')}`, 108, 275, {align:'center'})
 
     doc.save(`Pago_${op?.nombre||'operador'}_${fechaInicio}_al_${fechaFin}.pdf`)
   }
@@ -513,7 +523,7 @@ export default function Calculadora() {
                 <div className="bg-gray-900 rounded-xl p-5">
                   <h3 className="text-sm font-medium text-gray-300 mb-3">Resumen</h3>
                   <div className="space-y-2 text-sm">
-                    <div className="flex justify-between"><span className="text-gray-400">Sueldo base ({diasPeriodo}d)</span><span className="font-medium">${sueldoTotal.toLocaleString()}</span></div>
+                    <div className="flex justify-between"><span className="text-gray-400">Transferencia ({diasPeriodo}d)</span><span className="font-medium">${sueldoTotal.toLocaleString()}</span></div>
                     <div className="flex justify-between"><span className="text-gray-400">Viáticos</span><span>${subtotalServicios.toLocaleString()}</span></div>
                     <div className="flex justify-between"><span className="text-gray-400">Bonos</span><span>${totalBonos.toLocaleString()}</span></div>
                     {totalFestivos>0&&<div className="flex justify-between text-yellow-400"><span>Días festivos</span><span>${totalFestivos.toLocaleString()}</span></div>}
