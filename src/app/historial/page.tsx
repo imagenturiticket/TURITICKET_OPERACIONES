@@ -266,8 +266,11 @@ export default function Historial() {
                           <td key={d} className={`px-0.5 py-0.5 align-top ${esFinSemana ? 'opacity-75' : ''}`}>
                             {servicios.length === 0 ? (
                               mostrarDescanso ? (
-                                <div className="bg-gray-800 text-gray-500 rounded px-1 py-0.5 text-center leading-tight">
-                                  <div className="font-medium">💤</div>
+                                <div
+                                  onClick={() => abrirModal({ fecha: d, tipo: 'local', destino: 'DESCANSO', nota: '', unidad_id: null, pax: null, hora_inicio: null, hora_fin: null }, op.nombre)}
+                                  className="bg-gray-800 text-gray-500 rounded px-1 py-0.5 text-center leading-tight cursor-pointer hover:opacity-80 transition-opacity"
+                                >
+                                  <div className="font-medium">Descanso</div>
                                 </div>
                               ) : (
                                 <span className="text-gray-700">—</span>
