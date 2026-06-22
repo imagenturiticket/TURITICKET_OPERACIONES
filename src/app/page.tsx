@@ -117,7 +117,6 @@ export default function Home() {
       .eq('fecha', fecha)
       .order('tipo')
     if (data) {
-      // Extraer cliente de la nota si es renta
       setGuardadas(data.map((a: any) => {
         if (a.tipo === 'renta' && a.nota?.startsWith('Cliente:')) {
           const partes = a.nota.split('|')
@@ -142,14 +141,11 @@ export default function Home() {
     }
     setDiasSemana(dias)
 
-    const inicio = dias[0]
-    const fin = dias[6]
-
     const { data } = await supabase
       .from('asignaciones')
       .select('*, operadores(nombre), unidades(nombre)')
-      .gte('fecha', inicio)
-      .lte('fecha', fin)
+      .gte('fecha', dias[0])
+      .lte('fecha', dias[6])
     if (data) setSemana(data)
   }
 
@@ -186,7 +182,6 @@ export default function Home() {
     setGuardadas(guardadas.filter(a => a.id !== id))
   }
 
-  // Construir nota con cliente para rentas
   function buildNota(a: any) {
     if (a.tipo === 'renta' && a.cliente) {
       return `Cliente:${a.cliente}${a.nota ? '|' + a.nota : ''}`
@@ -304,9 +299,11 @@ export default function Home() {
     return `${nombreDia} ${numDia}`
   }
 
-  function esFuturo(fechaStr: string) {
-    const hoy = new Date().toISOString().split('T')[0]
-    return fechaStr > hoy
+  // Días futuros: solo pasado mañana en adelante muestran —
+  // Hoy y mañana sin asignación = Descanso
+  function esFuturoLejano(fechaStr: string) {
+    const pasadoManana = new Date(Date.now() + 2 * 86400000).toISOString().split('T')[0]
+    return fechaStr >= pasadoManana
   }
 
   const tipos = ['tour', 'transfer', 'renta', 'local', 'oficina']
@@ -403,15 +400,15 @@ export default function Home() {
                     <div className="space-y-1.5">
                       {diasSemana.map(d => {
                         const serviciosDia = asigOp.filter(a => a.fecha === d)
-                        const futuro = esFuturo(d)
+                        const futuroLejano = esFuturoLejano(d)
                         const label = labelDia(d)
 
                         return (
-                          <div key={d} className={`flex gap-2 items-start ${futuro ? 'opacity-40' : ''}`}>
+                          <div key={d} className={`flex gap-2 items-start ${futuroLejano ? 'opacity-40' : ''}`}>
                             <span className="text-gray-500 w-16 shrink-0 pt-0.5">{label}</span>
                             <div className="flex flex-col gap-0.5 flex-1">
                               {serviciosDia.length === 0 ? (
-                                futuro ? (
+                                futuroLejano ? (
                                   <span className="text-gray-600">—</span>
                                 ) : (
                                   <span className="bg-gray-700 text-gray-400 rounded px-1.5 py-0.5 text-xs font-medium">
