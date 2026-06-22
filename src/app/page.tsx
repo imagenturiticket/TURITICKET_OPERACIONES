@@ -66,16 +66,20 @@ function FilaAsignacion({ a, operadores, unidades, onChange, onDelete }: any) {
             className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm w-24 text-white" />
           <input placeholder="Hora fin" value={a.hora_fin || ''} onChange={e => onChange(a.id, 'hora_fin', e.target.value)}
             className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm w-24 text-white" />
+          <input placeholder="Cliente" value={a.cliente || ''} onChange={e => onChange(a.id, 'cliente', e.target.value)}
+            className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm w-32 text-white" />
         </>
       )}
 
       <select value={a.operador_id || ''} onChange={e => onChange(a.id, 'operador_id', e.target.value)}
         className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm text-white">
+        <option value="" disabled className="text-gray-500">— Seleccionar —</option>
         {operadores.map((o: any) => <option key={o.id} value={o.id}>{o.nombre}</option>)}
       </select>
 
       <select value={a.unidad_id || ''} onChange={e => onChange(a.id, 'unidad_id', e.target.value)}
         className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm text-white">
+        <option value="" disabled className="text-gray-500">— Seleccionar —</option>
         {unidades.map((u: any) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
       </select>
 
@@ -112,7 +116,16 @@ export default function Home() {
       .select('*, operadores(nombre), unidades(nombre)')
       .eq('fecha', fecha)
       .order('tipo')
-    if (data) setGuardadas(data)
+    if (data) {
+      // Extraer cliente de la nota si es renta
+      setGuardadas(data.map((a: any) => {
+        if (a.tipo === 'renta' && a.nota?.startsWith('Cliente:')) {
+          const partes = a.nota.split('|')
+          return { ...a, cliente: partes[0].replace('Cliente:', '').trim(), nota: partes.slice(1).join('|').trim() }
+        }
+        return a
+      }))
+    }
   }
 
   async function cargarSemana() {
@@ -143,9 +156,9 @@ export default function Home() {
   function agregarFila(tipo: string) {
     setNuevas([...nuevas, {
       id: 'new-' + Date.now(), tipo, fecha,
-      operador_id: operadores[0]?.id || '',
-      unidad_id: unidades[0]?.id || '',
-      destino: '', pax: 2, hora_inicio: '', hora_fin: '', nota: '',
+      operador_id: '',
+      unidad_id: '',
+      destino: '', pax: 2, hora_inicio: '', hora_fin: '', nota: '', cliente: '',
       isNew: true
     }])
   }
@@ -173,12 +186,20 @@ export default function Home() {
     setGuardadas(guardadas.filter(a => a.id !== id))
   }
 
+  // Construir nota con cliente para rentas
+  function buildNota(a: any) {
+    if (a.tipo === 'renta' && a.cliente) {
+      return `Cliente:${a.cliente}${a.nota ? '|' + a.nota : ''}`
+    }
+    return a.nota || ''
+  }
+
   async function guardar() {
     if (nuevas.length === 0) return
     setGuardando(true)
     for (const a of nuevas) {
-      const { isNew, id, operadores: _, unidades: __, ...data } = a
-      await supabase.from('asignaciones').insert({ ...data, fecha })
+      const { isNew, id, operadores: _, unidades: __, cliente, ...data } = a
+      await supabase.from('asignaciones').insert({ ...data, fecha, nota: buildNota(a) })
     }
     setNuevas([])
     await cargarGuardadas()
@@ -191,11 +212,11 @@ export default function Home() {
   async function guardarEdicion() {
     setGuardandoEdicion(true)
     for (const a of guardadas) {
-      const { operadores: _, unidades: __, isNew, ...data } = a
+      const { operadores: _, unidades: __, isNew, cliente, ...data } = a
       await supabase.from('asignaciones').update({
         tipo: data.tipo, destino: data.destino, pax: data.pax,
         hora_inicio: data.hora_inicio, hora_fin: data.hora_fin,
-        nota: data.nota, operador_id: data.operador_id, unidad_id: data.unidad_id,
+        nota: buildNota(a), operador_id: data.operador_id, unidad_id: data.unidad_id,
       }).eq('id', data.id)
     }
     await cargarSemana()
@@ -241,7 +262,8 @@ export default function Home() {
       rentas.forEach(a => {
         const op = a.operadores?.nombre || ''
         const uni = a.unidades?.nombre || ''
-        lines.push(`• ${a.hora_inicio || ''}${a.hora_fin ? ' a ' + a.hora_fin : ''} — ${op}, ${uni}`)
+        const cliente = a.cliente ? ` · ${a.cliente}` : ''
+        lines.push(`• ${a.hora_inicio || ''}${a.hora_fin ? ' a ' + a.hora_fin : ''} — ${op}, ${uni}${cliente}`)
       })
       lines.push('')
     }
@@ -269,7 +291,6 @@ export default function Home() {
     setTimeout(() => setMensaje(''), 3000)
   }
 
-  // Helpers para resumen semanal
   function labelDia(fechaStr: string) {
     const hoy = new Date().toISOString().split('T')[0]
     const ayer = new Date(Date.now() - 86400000).toISOString().split('T')[0]
@@ -289,14 +310,12 @@ export default function Home() {
   }
 
   const tipos = ['tour', 'transfer', 'renta', 'local', 'oficina']
-
   const fijosOrdenados = operadores.filter(op => FIJOS.includes(op.nombre))
 
   return (
     <div className="min-h-screen bg-gray-950 text-white p-4">
       <div className="max-w-5xl mx-auto space-y-6">
 
-        {/* Header */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-semibold">Asignaciones</h1>
@@ -314,14 +333,12 @@ export default function Home() {
           </div>
         )}
 
-        {/* Selector de fecha */}
         <div className="bg-gray-900 rounded-xl p-4">
           <label className="text-sm text-gray-400 block mb-1">Fecha</label>
           <input type="date" value={fecha} onChange={e => setFecha(e.target.value)}
             className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white" />
         </div>
 
-        {/* Asignaciones guardadas */}
         {guardadas.length > 0 && (
           <div className="bg-gray-900 rounded-xl p-4">
             <div className="flex items-center justify-between mb-3">
@@ -340,7 +357,6 @@ export default function Home() {
           </div>
         )}
 
-        {/* Nueva asignación */}
         <div className="bg-gray-900 rounded-xl p-4">
           <h2 className="text-sm font-semibold text-gray-300 mb-3">➕ Nueva asignación</h2>
           {nuevas.length > 0 && (
@@ -367,7 +383,6 @@ export default function Home() {
           )}
         </div>
 
-        {/* Resumen semanal por operador */}
         {fijosOrdenados.length > 0 && diasSemana.length > 0 && (
           <div className="bg-gray-900 rounded-xl p-4">
             <h2 className="text-sm font-semibold text-gray-300 mb-4">📊 Semana en detalle</h2>
@@ -375,7 +390,6 @@ export default function Home() {
               {fijosOrdenados.map(op => {
                 const asigOp = semana.filter(a => a.operador_id === op.id)
                 const alertas: string[] = []
-                const tours = asigOp.filter(a => a.tipo === 'tour').length
                 const rentas = asigOp.filter(a => a.tipo === 'renta').length
                 const locales = asigOp.filter(a => a.tipo === 'local' && !a.destino?.toLowerCase().includes('descanso')).length
                 const descansos = asigOp.filter(a => a.destino?.toLowerCase().includes('descanso')).length
@@ -386,7 +400,6 @@ export default function Home() {
                 return (
                   <div key={op.id} className={`rounded-xl p-3 text-xs ${alertas.length ? 'bg-gray-800 border border-yellow-700' : 'bg-gray-800'}`}>
                     <div className="font-semibold text-sm mb-3 text-white">{op.nombre}</div>
-
                     <div className="space-y-1.5">
                       {diasSemana.map(d => {
                         const serviciosDia = asigOp.filter(a => a.fecha === d)
@@ -428,7 +441,6 @@ export default function Home() {
                         )
                       })}
                     </div>
-
                     {alertas.length > 0 && (
                       <div className="mt-2 pt-2 border-t border-gray-700 space-y-0.5">
                         {alertas.map((a, i) => (

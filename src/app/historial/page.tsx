@@ -27,11 +27,123 @@ function getTipoColor(tipo: string, destino: string, nota: string) {
   return TIPO_COLOR[tipo] || { bg: 'bg-gray-700', text: 'text-gray-300', label: tipo }
 }
 
+const DIAS_ES = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado']
+const MESES_ES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre']
+
+function formatFechaLarga(fecha: string) {
+  const [y, m, d] = fecha.split('-').map(Number)
+  const date = new Date(y, m-1, d)
+  return `${DIAS_ES[date.getDay()]} ${d} de ${MESES_ES[m-1]} de ${y}`
+}
+
+function Modal({ servicio, operadorNombre, onClose }: any) {
+  if (!servicio) return null
+  const c = getTipoColor(servicio.tipo, servicio.destino || '', servicio.nota || '')
+
+  // Extraer cliente de la nota si es renta
+  let clienteNombre = ''
+  let notaLimpia = servicio.nota || ''
+  if (servicio.tipo === 'renta' && servicio.nota?.startsWith('Cliente:')) {
+    const partes = servicio.nota.split('|')
+    clienteNombre = partes[0].replace('Cliente:', '').trim()
+    notaLimpia = partes.slice(1).join('|').trim()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/60" />
+      <div className="relative bg-gray-900 rounded-2xl p-6 max-w-sm w-full border border-gray-700 shadow-2xl" onClick={e => e.stopPropagation()}>
+        <button onClick={onClose} className="absolute top-4 right-4 text-gray-500 hover:text-white text-xl">×</button>
+
+        <div className={`inline-block ${c.bg} ${c.text} text-xs font-semibold px-3 py-1 rounded-full mb-4`}>
+          {c.label}
+        </div>
+
+        <h2 className="text-lg font-bold text-white mb-4">{formatFechaLarga(servicio.fecha)}</h2>
+
+        <div className="space-y-3 text-sm">
+          <div className="flex justify-between">
+            <span className="text-gray-400">Operador</span>
+            <span className="text-white font-medium">{operadorNombre}</span>
+          </div>
+
+          {servicio.destino && !['DESCANSO','VACACIONES','FALTA'].includes(servicio.destino?.toUpperCase()) && (
+            <div className="flex justify-between">
+              <span className="text-gray-400">
+                {servicio.tipo === 'tour' ? 'Destino' : servicio.tipo === 'renta' ? 'Servicio' : 'Tipo'}
+              </span>
+              <span className="text-white font-medium">
+                {servicio.tipo === 'tour' ? `Tour a ${servicio.destino}` :
+                 servicio.tipo === 'renta' ? `Renta de ${servicio.destino}` :
+                 servicio.destino}
+              </span>
+            </div>
+          )}
+
+          {servicio.unidad_nombre && (
+            <div className="flex justify-between">
+              <span className="text-gray-400">Unidad</span>
+              <span className="text-white font-medium">{servicio.unidad_nombre}</span>
+            </div>
+          )}
+
+          {servicio.tipo === 'renta' && clienteNombre && (
+            <div className="flex justify-between">
+              <span className="text-gray-400">Cliente</span>
+              <span className="text-white font-medium">{clienteNombre}</span>
+            </div>
+          )}
+
+          {servicio.tipo === 'tour' && servicio.pax && (
+            <div className="flex justify-between">
+              <span className="text-gray-400">Pasajeros</span>
+              <span className="text-white font-medium">{servicio.pax} pax</span>
+            </div>
+          )}
+
+          {servicio.hora_inicio && (
+            <div className="flex justify-between">
+              <span className="text-gray-400">Hora inicio</span>
+              <span className="text-white font-medium">{servicio.hora_inicio}</span>
+            </div>
+          )}
+
+          {servicio.hora_fin && (
+            <div className="flex justify-between">
+              <span className="text-gray-400">Hora fin</span>
+              <span className="text-white font-medium">{servicio.hora_fin}</span>
+            </div>
+          )}
+
+          {servicio.bono !== undefined && (
+            <div className="flex justify-between">
+              <span className="text-gray-400">Bono</span>
+              <span className={`font-medium ${servicio.bono ? 'text-green-400' : 'text-red-400'}`}>
+                {servicio.bono ? '✓ Sí' : '✗ No'}
+              </span>
+            </div>
+          )}
+
+          {notaLimpia && (
+            <div className="flex justify-between">
+              <span className="text-gray-400">Notas</span>
+              <span className="text-white font-medium text-right max-w-[180px]">{notaLimpia}</span>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function Historial() {
   const [mes, setMes] = useState(() => new Date().toISOString().slice(0, 7))
   const [asignaciones, setAsignaciones] = useState<any[]>([])
   const [operadores, setOperadores] = useState<any[]>([])
+  const [unidades, setUnidades] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [modalServicio, setModalServicio] = useState<any>(null)
+  const [modalOperador, setModalOperador] = useState<string>('')
 
   useEffect(() => { cargar() }, [mes])
 
@@ -48,15 +160,20 @@ export default function Historial() {
       .eq('activo', true)
       .order('nombre', { ascending: true })
 
+    const { data: unis } = await supabase
+      .from('unidades')
+      .select('id, nombre')
+
     const { data: asig, error } = await supabase
       .from('asignaciones')
-      .select('id, fecha, tipo, destino, nota, operador_id, unidad_id')
+      .select('id, fecha, tipo, destino, nota, operador_id, unidad_id, pax, hora_inicio, hora_fin')
       .gte('fecha', inicio)
       .lte('fecha', fin)
       .order('fecha', { ascending: true })
 
     if (error) console.error('Error cargando asignaciones:', error)
     if (ops) setOperadores(ops)
+    if (unis) setUnidades(unis)
     if (asig) setAsignaciones(asig)
     setLoading(false)
   }
@@ -85,6 +202,12 @@ export default function Historial() {
       descansos: asig.filter(a => a.destino?.toLowerCase().includes('descanso')).length,
       total:     asig.length,
     }
+  }
+
+  function abrirModal(servicio: any, operadorNombre: string) {
+    const unidad = unidades.find(u => u.id === servicio.unidad_id)
+    setModalServicio({ ...servicio, unidad_nombre: unidad?.nombre || '' })
+    setModalOperador(operadorNombre)
   }
 
   const nombreMes = new Date(`${mes}-15`).toLocaleString('es-MX', { month: 'long', year: 'numeric' })
@@ -176,7 +299,11 @@ export default function Historial() {
                                 {servicios.map((s, idx) => {
                                   const c = getTipoColor(s.tipo, s.destino || '', s.nota || '')
                                   return (
-                                    <div key={idx} className={`${c.bg} ${c.text} rounded px-1 py-0.5 text-center leading-tight`}>
+                                    <div
+                                      key={idx}
+                                      onClick={() => abrirModal(s, op.nombre)}
+                                      className={`${c.bg} ${c.text} rounded px-1 py-0.5 text-center leading-tight cursor-pointer hover:opacity-80 transition-opacity`}
+                                    >
                                       <div className="font-medium">{c.label}</div>
                                       {s.destino && !['DESCANSO','VACACIONES','FALTA'].includes(s.destino?.toUpperCase()) && (
                                         <div className="opacity-75 truncate max-w-[60px]">{s.destino}</div>
@@ -197,6 +324,12 @@ export default function Historial() {
           </>
         )}
       </div>
+
+      <Modal
+        servicio={modalServicio}
+        operadorNombre={modalOperador}
+        onClose={() => setModalServicio(null)}
+      />
     </div>
   )
 }
