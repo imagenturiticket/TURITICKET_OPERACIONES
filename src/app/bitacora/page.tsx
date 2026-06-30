@@ -201,42 +201,39 @@ export default function Bitacora() {
   }
 
   // Intervalo de servicio por unidad (km)
-  const INTERVALOS: any = {
-    'Avanza': 10000,
-    'Urvan 1': 10000,
-    'Urvan 2': 10000,
-    'Hiace 1': 10000,
-    'Sprinter 1': 25000,
-    'Sprinter 2': 25000,
-    'Sprinter 3': 25000,
+  const CONFIG_UNIDADES: any = {
+    'Avanza':    { intervalo: 10000, kmUltimoServicio: 20132 },
+    'Urvan 1':   { intervalo: 10000, kmUltimoServicio: 228381 },
+    'Urvan 2':   { intervalo: 10000, kmUltimoServicio: 156704 },
+    'Hiace 1':   { intervalo: 10000, kmUltimoServicio: 356532 },
+    'Sprinter 1':{ intervalo: 25000, kmUltimoServicio: 148779 },
+    'Sprinter 2':{ intervalo: 25000, kmUltimoServicio: 97950 },
+    'Sprinter 3':{ intervalo: 25000, kmUltimoServicio: 83608 },
   }
 
   function getDashboardKm() {
     return unidades.map(u => {
-      // Último kilometraje registrado
-      const kmsU = kmRegistros.filter(k => k.unidad_id === u.id).sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
+      const kmsU = kmRegistros.filter((k: any) => k.unidad_id === u.id).sort((a: any, b: any) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
       const ultimoKm = kmsU[0]
-
-      // Último servicio de la bitácora
       const serviciosU = registros
-        .filter(r => r.unidad_id === u.id && r.categoria === 'Servicio' && r.kilometraje)
-        .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
+        .filter((r: any) => r.unidad_id === u.id && r.categoria === 'Servicio' && r.kilometraje)
+        .sort((a: any, b: any) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
       const ultimoServicio = serviciosU[0]
-
-      const intervalo = INTERVALOS[u.nombre] || 10000
+      const cfg = CONFIG_UNIDADES[u.nombre]
+      const intervalo = cfg?.intervalo || 10000
       const kmActual = ultimoKm?.kilometraje || null
-      const kmServicio = ultimoServicio?.kilometraje || null
+      const kmServicioBitacora = ultimoServicio?.kilometraje || null
+      const kmServicioConfig = cfg?.kmUltimoServicio || null
+      const kmServicio = (kmServicioBitacora && kmServicioBitacora > (kmServicioConfig || 0)) ? kmServicioBitacora : kmServicioConfig
       const kmSiguiente = kmServicio ? kmServicio + intervalo : null
       const kmRestantes = kmActual && kmSiguiente ? kmSiguiente - kmActual : null
-
       let alerta = ''
       if (kmRestantes !== null) {
         if (kmRestantes <= 300) alerta = 'rojo'
         else if (kmRestantes <= 1000) alerta = 'naranja'
         else if (kmRestantes <= 1500) alerta = 'amarillo'
       }
-
-      return { ...u, ultimoKm, ultimoServicio, kmActual, kmSiguiente, kmRestantes, alerta, intervalo }
+      return { ...u, ultimoKm, ultimoServicio, kmActual, kmSiguiente, kmServicio, kmRestantes, alerta, intervalo }
     })
   }
 
