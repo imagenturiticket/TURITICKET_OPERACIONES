@@ -169,8 +169,8 @@ export default function Bitacora() {
   async function cargar() {
     setLoading(true)
     const { data: unis } = await supabase.from('unidades').select('*').eq('activo', true).order('nombre')
-    const { data: regs } = await supabase.from('bitacora_unidades').select('*, unidades(nombre)').order('fecha', { ascending: false })
-    const { data: kms } = await supabase.from('kilometraje_unidades').select('*, unidades(nombre)').order('fecha', { ascending: false })
+    const { data: regs } = await supabase.from('bitacora_unidades').select('*').order('fecha', { ascending: false })
+    const { data: kms } = await supabase.from('kilometraje_unidades').select('*').order('fecha', { ascending: false })
     if (unis) setUnidades(unis)
     if (regs) setRegistros(regs)
     if (kms) setKmRegistros(kms)
@@ -318,7 +318,7 @@ export default function Bitacora() {
                         return (
                           <tr key={r.id} className={`border-b border-gray-800 hover:bg-gray-800/50 ${i % 2 === 0 ? '' : 'bg-gray-950'}`}>
                             <td className="px-4 py-3 text-gray-300 text-xs whitespace-nowrap">{formatFecha(r.fecha)}</td>
-                            <td className="px-4 py-3 font-medium text-white whitespace-nowrap">{r.unidades?.nombre || '—'}</td>
+                            <td className="px-4 py-3 font-medium text-white whitespace-nowrap">{unidades.find((u:any) => u.id === r.unidad_id)?.nombre || '—'}</td>
                             <td className="px-4 py-3">
                               <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${catColor}`}>{r.categoria}</span>
                             </td>
@@ -467,7 +467,7 @@ export default function Bitacora() {
                   ) : kmRegistros.slice(0, 30).map((k, i) => (
                     <tr key={k.id} className={`border-b border-gray-800 ${i % 2 === 0 ? '' : 'bg-gray-950'}`}>
                       <td className="px-4 py-2 text-gray-300 text-xs">{formatFecha(k.fecha)}</td>
-                      <td className="px-4 py-2 font-medium">{k.unidades?.nombre || '—'}</td>
+                      <td className="px-4 py-2 font-medium">{unidades.find((u:any) => u.id === k.unidad_id)?.nombre || '—'}</td>
                       <td className="px-4 py-2 text-right font-bold text-green-400">{k.kilometraje?.toLocaleString()}</td>
                       <td className="px-4 py-2 text-gray-400 text-xs">{k.notas || '—'}</td>
                     </tr>
