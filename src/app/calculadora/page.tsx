@@ -99,10 +99,25 @@ export default function Calculadora() {
         const pagoBase = VIATICOS[tipoServicio] || 0
         const derecho = BONO_DERECHO[tipoServicio] || false
         const sucio = fechasSucio.has(a.fecha)
+
+        // Si es servicio local sin destino, mostrar LOCALES
+        let destinoMostrar = a.destino || ''
+        if (tipoServicio === 'servicio_local' && !destinoMostrar) {
+          destinoMostrar = 'LOCALES'
+        }
+        // Si es descanso sin destino, mostrar DESCANSO
+        if (tipoServicio === 'descanso' && !destinoMostrar) {
+          destinoMostrar = 'DESCANSO'
+        }
+        // Si es oficina sin destino, mostrar OFICINA
+        if (tipoServicio === 'oficina' && !destinoMostrar) {
+          destinoMostrar = 'OFICINA'
+        }
+
         nuevasFilas.push({
           _uid: uid, asignacion_id: a.id, fecha: a.fecha,
           unidad_nombre: a.unidades?.nombre || '',
-          destino: a.destino || '', tipo_servicio: tipoServicio,
+          destino: destinoMostrar, tipo_servicio: tipoServicio,
           pax: a.pax || 1, hora_inicio: a.hora_inicio || '', hora_fin: a.hora_fin || '',
           nota_original: a.nota || '', nota_pago: '',
           pago_base: pagoBase,
@@ -195,7 +210,6 @@ export default function Calculadora() {
     const autoTable = (await import('jspdf-autotable')).default
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' })
 
-    // ENCABEZADO — más compacto (altura 18 en vez de 25)
     doc.setFillColor(67, 56, 202)
     doc.rect(0, 0, 216, 18, 'F')
     doc.setTextColor(255,255,255)
@@ -203,7 +217,6 @@ export default function Calculadora() {
     doc.text('Recibo de Pago', 15, 11)
     doc.setTextColor(0,0,0)
 
-    // Info operador
     doc.setFontSize(11); doc.setFont('helvetica','bold')
     doc.text(`Operador: ${op?.nombre?.toUpperCase() || ''}`, 15, 27)
     doc.setFont('helvetica','normal'); doc.setFontSize(9)
@@ -243,13 +256,11 @@ export default function Calculadora() {
       didParseCell: (data: any) => {
         const row = filas[data.row.index]
         if (!row) return
-        // Solo descanso y vacaciones/falta cambian de color; oficina y jornada_8h = color normal
         if (['descanso','vacaciones'].includes(row.tipo_servicio)) {
           data.cell.styles.fillColor = [210,210,220]; data.cell.styles.textColor = [100,100,115]
         } else if (row.tipo_servicio === 'falta') {
           data.cell.styles.fillColor = [80,20,20]; data.cell.styles.textColor = [255,150,150]
         }
-        // oficina y jornada_8h sin color especial (fondo normal)
         if (data.column.index === 5 && data.section === 'body') {
           if (data.cell.text[0]==='$100') data.cell.styles.textColor = [80,200,120]
           if (data.cell.text[0]==='—' && BONO_DERECHO[row.tipo_servicio]) data.cell.styles.textColor = [220,80,80]
@@ -257,7 +268,6 @@ export default function Calculadora() {
       }
     })
 
-    // RESUMEN DE PAGO — más compacto (altura 42 en vez de 65)
     let y = (doc as any).lastAutoTable.finalY + 6
     doc.setFillColor(245,245,250)
     doc.rect(15, y, 186, 52, 'F')
@@ -269,7 +279,6 @@ export default function Calculadora() {
     doc.setTextColor(0,0,0); doc.setFont('helvetica','normal'); doc.setFontSize(8.5)
 
     const col1=20, col2=85, col3=138
-    // Cambio: "TRANSFERENCIA" en vez de "Sueldo base (X días × $Y)"
     doc.text(`TRANSFERENCIA:`, col1, y+13)
     doc.setFont('helvetica','bold'); doc.text(`$${sueldoTotal.toLocaleString()}`, col2, y+13)
     doc.setFont('helvetica','normal')
@@ -297,7 +306,6 @@ export default function Calculadora() {
       doc.setFont('helvetica','normal'); doc.setTextColor(0,0,0)
     }
 
-    // Caja TOTAL A PAGAR
     doc.setFillColor(67,56,202)
     doc.rect(col3-3, y+4, 62, 13, 'F')
     doc.setTextColor(255,255,255)
@@ -318,7 +326,6 @@ export default function Calculadora() {
     doc.text(`Saldo pendiente: $${saldoPendiente.toLocaleString()}`, col3, y+47)
     doc.setTextColor(0,0,0); doc.setFont('helvetica','normal')
 
-    // FIRMAS — simplificadas: solo Entregó y Recibió
     y += 58
     if (y > 230) { doc.addPage(); y = 20 }
     doc.setFillColor(250,250,252)
@@ -326,10 +333,8 @@ export default function Calculadora() {
     doc.setDrawColor(200,200,210)
     doc.rect(15, y, 186, 30, 'S')
     doc.setFontSize(8); doc.setFont('helvetica','normal')
-    // Línea Entregó (izquierda)
     doc.line(20, y+20, 95, y+20)
     doc.text('Entregó', 20, y+25)
-    // Línea Recibió (derecha)
     doc.line(115, y+20, 195, y+20)
     doc.text('Recibió', 115, y+25)
 
