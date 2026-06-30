@@ -11,6 +11,8 @@ const nav = [
   { href: '/importar',    icon: '📥', label: 'Importar datos' },
   { href: '/calculadora', icon: '💰', label: 'Calculadora'    },
   { href: '/vacaciones',  icon: '🏖️', label: 'Vacaciones'    },
+  { href: '/bitacora',    icon: '🔧', label: 'Bitácora'       },
+  { href: '/pendientes',  icon: '📌', label: 'Pendientes'     },
 ]
 
 export default function Sidebar() {
