@@ -126,6 +126,24 @@ export default function Calculadora() {
         })
         nuevos++
       }
+      // Agregar días sin asignación como Descanso
+      const fechasConAsignacion = new Set(nuevasFilas.map((f: any) => f.fecha))
+      const inicio = new Date(fechaInicio + 'T12:00:00')
+      const fin = new Date(fechaFin + 'T12:00:00')
+      for (let d = new Date(inicio); d <= fin; d.setDate(d.getDate() + 1)) {
+        const fechaStr = d.toISOString().split('T')[0]
+        if (!fechasConAsignacion.has(fechaStr) && !filas.some(f => f.fecha === fechaStr && f.tipo_servicio === 'descanso')) {
+          nuevasFilas.push({
+            _uid: 'descanso-' + fechaStr, asignacion_id: null, fecha: fechaStr,
+            unidad_nombre: '', destino: 'DESCANSO', tipo_servicio: 'descanso',
+            pax: 1, hora_inicio: '', hora_fin: '', nota_original: '', nota_pago: '',
+            pago_base: 0, bono: false, extra: 0, festivo: 0, descuento: 0, origen: 'auto'
+          })
+        }
+      }
+      // Ordenar por fecha
+      nuevasFilas.sort((a: any, b: any) => a.fecha.localeCompare(b.fecha))
+
       setFilas(prev => [...prev, ...nuevasFilas])
     }
     setLoading(false)
