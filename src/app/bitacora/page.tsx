@@ -202,7 +202,8 @@ export default function Bitacora() {
 
   // Intervalo de servicio por unidad (km)
   const CONFIG_UNIDADES: any = {
-    'Avanza':    { intervalo: 10000, kmUltimoServicio: 20132 },
+    'Avanza 1':  { intervalo: 10000, kmUltimoServicio: 20132 },
+    'Avanza 2':  { intervalo: 10000, kmUltimoServicio: 1507 },
     'Urvan 1':   { intervalo: 10000, kmUltimoServicio: 228381 },
     'Urvan 2':   { intervalo: 10000, kmUltimoServicio: 156704 },
     'Hiace 1':   { intervalo: 10000, kmUltimoServicio: 356532 },
