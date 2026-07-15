@@ -350,7 +350,7 @@ export default function Home() {
 // Operadores en filas, días en columnas, scroll horizontal sin fin (carga más
 // días automáticamente al acercarte a cualquiera de los dos extremos).
 
-const DAY_WIDTH = 84
+const DAY_WIDTH = 96
 const CHUNK_DIAS = 20
 const MAX_DIAS = 240
 const MESES_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
@@ -536,19 +536,23 @@ function LineaTiempoFijos({ operadoresFijos, refreshKey }: any) {
                         futuro ? (
                           <span className="text-gray-700 text-center text-xs">—</span>
                         ) : (
-                          <span className="bg-gray-800 text-gray-500 rounded px-1 text-[10px] text-center truncate" title="Descanso">💤</span>
+                          <span className="border border-dashed border-gray-600 bg-gray-800/30 text-gray-500 italic rounded px-1 text-[10px] text-center truncate" title="Descanso">
+                            💤 Descanso
+                          </span>
                         )
                       ) : (
                         serviciosDia.map((s: any, i: number) => {
                           const esDescanso = s.destino?.toLowerCase().includes('descanso')
                           const esVacaciones = s.destino?.toLowerCase().includes('vacacion')
-                          const bg = esDescanso ? 'bg-gray-700 text-gray-400' : esVacaciones ? 'bg-blue-900 text-blue-300' : TIPO_BG[s.tipo] || 'bg-gray-700 text-gray-300'
-                          const texto = esDescanso ? '💤' : esVacaciones ? '🏖️' :
+                          const bg = esDescanso
+                            ? 'border border-dashed border-gray-600 bg-gray-800/30 text-gray-500 italic'
+                            : esVacaciones ? 'bg-blue-900 text-blue-300' : TIPO_BG[s.tipo] || 'bg-gray-700 text-gray-300'
+                          const texto = esDescanso ? '💤 Descanso' : esVacaciones ? '🏖️ Vacaciones' :
                             s.tipo === 'tour' ? `🗺️ ${s.destino || ''}` :
-                            s.tipo === 'transfer' ? '🚐' :
-                            s.tipo === 'renta' ? '🔑' :
-                            s.tipo === 'local' ? '🏙️' :
-                            s.tipo === 'oficina' ? '🏢' : s.tipo
+                            s.tipo === 'transfer' ? '🚐 Transfer' :
+                            s.tipo === 'renta' ? '🔑 Renta' :
+                            s.tipo === 'local' ? '🏙️ Local' :
+                            s.tipo === 'oficina' ? '🏢 Oficina' : s.tipo
                           const titulo = s.tipo === 'tour' ? `${s.destino || ''}${s.pax ? ` (${s.pax} pax)` : ''}` :
                             s.tipo === 'transfer' ? `Transfer${s.hora_inicio ? ' ' + s.hora_inicio : ''}` :
                             s.tipo === 'renta' ? `Renta ${s.hora_inicio || ''}${s.hora_fin ? '-' + s.hora_fin : ''}` :
