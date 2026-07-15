@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, Fragment } from 'react'
 import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
@@ -97,11 +97,10 @@ export default function Home() {
   const [guardando, setGuardando] = useState(false)
   const [guardandoEdicion, setGuardandoEdicion] = useState(false)
   const [mensaje, setMensaje] = useState('')
-  const [semana, setSemana] = useState<any[]>([])
-  const [diasSemana, setDiasSemana] = useState<string[]>([])
+  const [refreshTimeline, setRefreshTimeline] = useState(0)
 
   useEffect(() => { cargarDatos() }, [])
-  useEffect(() => { if (fecha) { cargarGuardadas(); cargarSemana() } }, [fecha])
+  useEffect(() => { if (fecha) { cargarGuardadas() } }, [fecha])
 
   async function cargarDatos() {
     const { data: ops } = await supabase.from('operadores').select('*').eq('activo', true).order('nombre')
@@ -125,28 +124,6 @@ export default function Home() {
         return a
       }))
     }
-  }
-
-  async function cargarSemana() {
-    const d = new Date(fecha + 'T12:00:00')
-    const dia = d.getDay()
-    const lunes = new Date(d)
-    lunes.setDate(d.getDate() - (dia === 0 ? 6 : dia - 1))
-
-    const dias: string[] = []
-    for (let i = 0; i < 7; i++) {
-      const dd = new Date(lunes)
-      dd.setDate(lunes.getDate() + i)
-      dias.push(dd.toISOString().split('T')[0])
-    }
-    setDiasSemana(dias)
-
-    const { data } = await supabase
-      .from('asignaciones')
-      .select('*, operadores(nombre), unidades(nombre)')
-      .gte('fecha', dias[0])
-      .lte('fecha', dias[6])
-    if (data) setSemana(data)
   }
 
   function agregarFila(tipo: string) {
@@ -198,7 +175,7 @@ export default function Home() {
     }
     setNuevas([])
     await cargarGuardadas()
-    await cargarSemana()
+    setRefreshTimeline(x => x + 1)
     setGuardando(false)
     setMensaje('✓ Guardado correctamente')
     setTimeout(() => setMensaje(''), 3000)
@@ -214,7 +191,7 @@ export default function Home() {
         nota: buildNota(a), operador_id: data.operador_id, unidad_id: data.unidad_id,
       }).eq('id', data.id)
     }
-    await cargarSemana()
+    setRefreshTimeline(x => x + 1)
     setGuardandoEdicion(false)
     setMensaje('✓ Cambios guardados')
     setTimeout(() => setMensaje(''), 3000)
@@ -284,26 +261,6 @@ export default function Home() {
     navigator.clipboard.writeText(texto)
     setMensaje('¡Mensaje copiado para WhatsApp!')
     setTimeout(() => setMensaje(''), 3000)
-  }
-
-  function labelDia(fechaStr: string) {
-    const hoy = new Date().toISOString().split('T')[0]
-    const ayer = new Date(Date.now() - 86400000).toISOString().split('T')[0]
-    const antier = new Date(Date.now() - 172800000).toISOString().split('T')[0]
-    const d = new Date(fechaStr + 'T12:00:00')
-    const nombreDia = d.toLocaleString('es-MX', { weekday: 'short' })
-    const numDia = d.getDate()
-    if (fechaStr === hoy) return `Hoy ${numDia}`
-    if (fechaStr === ayer) return `Ayer ${numDia}`
-    if (fechaStr === antier) return `Antier ${numDia}`
-    return `${nombreDia} ${numDia}`
-  }
-
-  // Días futuros: solo pasado mañana en adelante muestran —
-  // Hoy y mañana sin asignación = Descanso
-  function esFuturoLejano(fechaStr: string) {
-    const pasadoManana = new Date(Date.now() + 2 * 86400000).toISOString().split('T')[0]
-    return fechaStr >= pasadoManana
   }
 
   const tipos = ['tour', 'transfer', 'renta', 'local', 'oficina']
@@ -380,78 +337,237 @@ export default function Home() {
           )}
         </div>
 
-        {fijosOrdenados.length > 0 && diasSemana.length > 0 && (
-          <div className="bg-gray-900 rounded-xl p-4">
-            <h2 className="text-sm font-semibold text-gray-300 mb-4">📊 Semana en detalle</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-              {fijosOrdenados.map(op => {
-                const asigOp = semana.filter(a => a.operador_id === op.id)
-                const alertas: string[] = []
-                const rentas = asigOp.filter(a => a.tipo === 'renta').length
-                const locales = asigOp.filter(a => a.tipo === 'local' && !a.destino?.toLowerCase().includes('descanso')).length
-                const descansos = asigOp.filter(a => a.destino?.toLowerCase().includes('descanso')).length
-                if (descansos === 0 && asigOp.length >= 5) alertas.push('⚠️ Sin descanso')
-                if (locales >= 3) alertas.push('📍 Muchos locales')
-                if (rentas >= 3) alertas.push('🔑 Varias rentas')
-
-                return (
-                  <div key={op.id} className={`rounded-xl p-3 text-xs ${alertas.length ? 'bg-gray-800 border border-yellow-700' : 'bg-gray-800'}`}>
-                    <div className="font-semibold text-sm mb-3 text-white">{op.nombre}</div>
-                    <div className="space-y-1.5">
-                      {diasSemana.map(d => {
-                        const serviciosDia = asigOp.filter(a => a.fecha === d)
-                        const futuroLejano = esFuturoLejano(d)
-                        const label = labelDia(d)
-
-                        return (
-                          <div key={d} className={`flex gap-2 items-start ${futuroLejano ? 'opacity-40' : ''}`}>
-                            <span className="text-gray-500 w-16 shrink-0 pt-0.5">{label}</span>
-                            <div className="flex flex-col gap-0.5 flex-1">
-                              {serviciosDia.length === 0 ? (
-                                futuroLejano ? (
-                                  <span className="text-gray-600">—</span>
-                                ) : (
-                                  <span className="bg-gray-700 text-gray-400 rounded px-1.5 py-0.5 text-xs font-medium">
-                                    💤 Descanso
-                                  </span>
-                                )
-                              ) : (
-                                serviciosDia.map((s, i) => {
-                                  const esDescanso = s.destino?.toLowerCase().includes('descanso')
-                                  const esVacaciones = s.destino?.toLowerCase().includes('vacacion')
-                                  const bg = esDescanso ? 'bg-gray-700 text-gray-400' : esVacaciones ? 'bg-blue-900 text-blue-300' : TIPO_BG[s.tipo] || 'bg-gray-700 text-gray-300'
-                                  const texto = esDescanso ? '💤 Descanso' : esVacaciones ? '🏖️ Vacaciones' :
-                                    s.tipo === 'tour' ? `🗺️ ${s.destino}` :
-                                    s.tipo === 'transfer' ? `🚐 Transfer${s.hora_inicio ? ' ' + s.hora_inicio : ''}` :
-                                    s.tipo === 'renta' ? `🔑 Renta${s.hora_inicio ? ' ' + s.hora_inicio : ''}` :
-                                    s.tipo === 'local' ? `🏙️ Locales` :
-                                    s.tipo === 'oficina' ? `🏢 Oficina` : s.tipo
-                                  return (
-                                    <span key={i} className={`${bg} rounded px-1.5 py-0.5 text-xs font-medium`}>
-                                      {texto}
-                                    </span>
-                                  )
-                                })
-                              )}
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                    {alertas.length > 0 && (
-                      <div className="mt-2 pt-2 border-t border-gray-700 space-y-0.5">
-                        {alertas.map((a, i) => (
-                          <div key={i} className="text-yellow-400 text-xs">{a}</div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          </div>
+        {fijosOrdenados.length > 0 && (
+          <LineaTiempoFijos operadoresFijos={fijosOrdenados} refreshKey={refreshTimeline} />
         )}
 
+      </div>
+    </div>
+  )
+}
+
+// ── Línea de tiempo horizontal de operadores fijos ──────────────────────────
+// Operadores en filas, días en columnas, scroll horizontal sin fin (carga más
+// días automáticamente al acercarte a cualquiera de los dos extremos).
+
+const DAY_WIDTH = 84
+const CHUNK_DIAS = 20
+const MAX_DIAS = 240
+const MESES_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+
+function addDays(fechaStr: string, n: number) {
+  const d = new Date(fechaStr + 'T12:00:00')
+  d.setDate(d.getDate() + n)
+  return d.toISOString().split('T')[0]
+}
+
+function rangoFechas(inicio: string, fin: string) {
+  const dias: string[] = []
+  let cur = inicio
+  while (cur <= fin) { dias.push(cur); cur = addDays(cur, 1) }
+  return dias
+}
+
+function esFuturoLejanoTL(fechaStr: string) {
+  const pasadoManana = addDays(new Date().toISOString().split('T')[0], 2)
+  return fechaStr >= pasadoManana
+}
+
+function LineaTiempoFijos({ operadoresFijos, refreshKey }: any) {
+  const [dias, setDias] = useState<string[]>([])
+  const [data, setData] = useState<any[]>([])
+  const containerRef = useRef<HTMLDivElement>(null)
+  const diasRef = useRef<string[]>([])
+  const loadingRef = useRef(false)
+  const inicializadoRef = useRef(false)
+  const scrolledRef = useRef(false)
+  const primerRenderRef = useRef(true)
+  const hoyStr = new Date().toISOString().split('T')[0]
+
+  useEffect(() => { diasRef.current = dias }, [dias])
+
+  async function fetchRango(inicioStr: string, finStr: string) {
+    const ids = operadoresFijos.map((o: any) => o.id)
+    if (ids.length === 0) return []
+    const { data: rows } = await supabase
+      .from('asignaciones')
+      .select('*')
+      .gte('fecha', inicioStr)
+      .lte('fecha', finStr)
+      .in('operador_id', ids)
+    return rows || []
+  }
+
+  // Inicializar rango (hoy -20 a hoy +40) cuando ya tenemos operadores
+  useEffect(() => {
+    if (operadoresFijos.length === 0 || inicializadoRef.current) return
+    inicializadoRef.current = true
+    const inicio = addDays(hoyStr, -20)
+    const fin = addDays(hoyStr, 40)
+    const d = rangoFechas(inicio, fin)
+    setDias(d)
+    fetchRango(inicio, fin).then(rows => setData(rows))
+  }, [operadoresFijos])
+
+  // Refrescar datos del rango actual cuando cambian las asignaciones guardadas
+  useEffect(() => {
+    if (primerRenderRef.current) { primerRenderRef.current = false; return }
+    const d = diasRef.current
+    if (d.length === 0) return
+    fetchRango(d[0], d[d.length - 1]).then(rows => setData(rows))
+  }, [refreshKey])
+
+  // Centrar en "hoy" la primera vez que se pinta el rango
+  useEffect(() => {
+    if (dias.length === 0 || scrolledRef.current) return
+    scrolledRef.current = true
+    requestAnimationFrame(() => irAHoy())
+  }, [dias])
+
+  async function extenderInicio() {
+    if (loadingRef.current) return
+    const actuales = diasRef.current
+    if (actuales.length === 0 || actuales.length >= MAX_DIAS) return
+    loadingRef.current = true
+    const primerDia = actuales[0]
+    const nuevoInicio = addDays(primerDia, -CHUNK_DIAS)
+    const nuevoFinChunk = addDays(primerDia, -1)
+    const nuevosDias = rangoFechas(nuevoInicio, nuevoFinChunk)
+    const rows = await fetchRango(nuevoInicio, nuevoFinChunk)
+    const el = containerRef.current
+    const prevScrollLeft = el ? el.scrollLeft : 0
+    setDias(prev => [...nuevosDias, ...prev])
+    setData(prev => [...rows, ...prev])
+    requestAnimationFrame(() => {
+      if (el) el.scrollLeft = prevScrollLeft + nuevosDias.length * DAY_WIDTH
+    })
+    loadingRef.current = false
+  }
+
+  async function extenderFin() {
+    if (loadingRef.current) return
+    const actuales = diasRef.current
+    if (actuales.length === 0 || actuales.length >= MAX_DIAS) return
+    loadingRef.current = true
+    const ultimoDia = actuales[actuales.length - 1]
+    const nuevoInicioChunk = addDays(ultimoDia, 1)
+    const nuevoFin = addDays(ultimoDia, CHUNK_DIAS)
+    const nuevosDias = rangoFechas(nuevoInicioChunk, nuevoFin)
+    const rows = await fetchRango(nuevoInicioChunk, nuevoFin)
+    setDias(prev => [...prev, ...nuevosDias])
+    setData(prev => [...prev, ...rows])
+    loadingRef.current = false
+  }
+
+  function onScroll() {
+    const el = containerRef.current
+    if (!el) return
+    const umbral = DAY_WIDTH * 5
+    if (el.scrollLeft < umbral) extenderInicio()
+    else if (el.scrollWidth - el.scrollLeft - el.clientWidth < umbral) extenderFin()
+  }
+
+  function irAHoy() {
+    const el = containerRef.current
+    if (!el) return
+    const idx = dias.indexOf(hoyStr)
+    if (idx === -1) return
+    el.scrollLeft = Math.max(0, (idx - 2) * DAY_WIDTH)
+  }
+
+  return (
+    <div className="bg-gray-900 rounded-xl p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-sm font-semibold text-gray-300">📊 Línea de tiempo — Operadores fijos</h2>
+        <button onClick={irAHoy} className="text-xs text-indigo-400 hover:text-indigo-300 font-medium">
+          Ir a hoy
+        </button>
+      </div>
+
+      <div ref={containerRef} onScroll={onScroll} className="overflow-x-auto rounded-lg border border-gray-800">
+        <div className="grid" style={{ gridTemplateColumns: `140px repeat(${dias.length}, ${DAY_WIDTH}px)`, minWidth: 'max-content' }}>
+
+          {/* Fila de etiqueta de mes */}
+          <div className="sticky left-0 z-30 bg-gray-900" />
+          {dias.map((d, i) => {
+            const dt = new Date(d + 'T12:00:00')
+            const mostrarMes = dt.getDate() === 1 || i === 0
+            return (
+              <div key={d + '-mes'} className="relative h-5 bg-gray-900">
+                {mostrarMes && (
+                  <span className="absolute left-1 top-0 text-[11px] font-semibold text-gray-400 whitespace-nowrap z-10">
+                    {MESES_ES[dt.getMonth()]} {dt.getFullYear()}
+                  </span>
+                )}
+              </div>
+            )
+          })}
+
+          {/* Fila de encabezado de días */}
+          <div className="sticky left-0 z-30 bg-gray-900 border-b border-r border-gray-800 flex items-end px-2 pb-1 text-[11px] text-gray-500 font-semibold">
+            Operador
+          </div>
+          {dias.map(d => {
+            const esHoy = d === hoyStr
+            const dt = new Date(d + 'T12:00:00')
+            return (
+              <div key={d + '-h'} className={`text-center text-[10px] py-1 border-b border-gray-800 ${esHoy ? 'bg-indigo-950 text-indigo-300 font-bold' : 'text-gray-500'}`}>
+                <div className="capitalize">{dt.toLocaleString('es-MX', { weekday: 'short' })}</div>
+                <div>{dt.getDate()}</div>
+              </div>
+            )
+          })}
+
+          {/* Filas de operadores */}
+          {operadoresFijos.map((op: any) => {
+            const asigOp = data.filter((a: any) => a.operador_id === op.id)
+            return (
+              <Fragment key={op.id}>
+                <div className="sticky left-0 z-20 bg-gray-900 flex items-center px-2 py-1 text-xs font-medium text-white border-b border-r border-gray-800">
+                  {op.nombre}
+                </div>
+                {dias.map(d => {
+                  const esHoy = d === hoyStr
+                  const serviciosDia = asigOp.filter((a: any) => a.fecha === d)
+                  const futuro = esFuturoLejanoTL(d)
+                  return (
+                    <div key={d} className={`border-b border-gray-800 px-1 py-1 flex flex-col gap-0.5 justify-center min-h-[42px] ${esHoy ? 'bg-indigo-950/40' : ''}`}>
+                      {serviciosDia.length === 0 ? (
+                        futuro ? (
+                          <span className="text-gray-700 text-center text-xs">—</span>
+                        ) : (
+                          <span className="bg-gray-800 text-gray-500 rounded px-1 text-[10px] text-center truncate" title="Descanso">💤</span>
+                        )
+                      ) : (
+                        serviciosDia.map((s: any, i: number) => {
+                          const esDescanso = s.destino?.toLowerCase().includes('descanso')
+                          const esVacaciones = s.destino?.toLowerCase().includes('vacacion')
+                          const bg = esDescanso ? 'bg-gray-700 text-gray-400' : esVacaciones ? 'bg-blue-900 text-blue-300' : TIPO_BG[s.tipo] || 'bg-gray-700 text-gray-300'
+                          const texto = esDescanso ? '💤' : esVacaciones ? '🏖️' :
+                            s.tipo === 'tour' ? `🗺️ ${s.destino || ''}` :
+                            s.tipo === 'transfer' ? '🚐' :
+                            s.tipo === 'renta' ? '🔑' :
+                            s.tipo === 'local' ? '🏙️' :
+                            s.tipo === 'oficina' ? '🏢' : s.tipo
+                          const titulo = s.tipo === 'tour' ? `${s.destino || ''}${s.pax ? ` (${s.pax} pax)` : ''}` :
+                            s.tipo === 'transfer' ? `Transfer${s.hora_inicio ? ' ' + s.hora_inicio : ''}` :
+                            s.tipo === 'renta' ? `Renta ${s.hora_inicio || ''}${s.hora_fin ? '-' + s.hora_fin : ''}` :
+                            s.tipo === 'local' ? (s.destino || 'Local') :
+                            s.tipo === 'oficina' ? (s.destino || 'Oficina') : s.tipo
+                          return (
+                            <span key={i} title={titulo} className={`${bg} rounded px-1 text-[10px] text-center truncate leading-tight`}>
+                              {texto}
+                            </span>
+                          )
+                        })
+                      )}
+                    </div>
+                  )
+                })}
+              </Fragment>
+            )
+          })}
+        </div>
       </div>
     </div>
   )
