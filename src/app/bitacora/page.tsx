@@ -37,18 +37,28 @@ const CAT_COLOR: any = {
 
 const MESES_ES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre']
 
+const OPCIONES_REPORTA = ['ZEUS', 'LIC.JUAN', 'AMA', 'OPERADOR']
+
 function formatFecha(fecha: string) {
   if (!fecha) return '—'
   const [y, m, d] = fecha.split('-').map(Number)
   return `${d} de ${MESES_ES[m-1]} de ${y}`
 }
 
-function ModalRegistro({ unidades, registro, onClose, onSave }: any) {
+function ModalRegistro({ unidades, operadores, registro, onClose, onSave }: any) {
   const [form, setForm] = useState(registro || {
     unidad_id: '', fecha: new Date().toISOString().split('T')[0],
     kilometraje: '', categoria: '', detalles: '',
     costo: '', taller_mecanico: '', anexos: '', recomendaciones: ''
   })
+  const REPORTA_FIJOS = ['ZEUS', 'LIC.JUAN', 'AMA']
+  const reportaInicial = registro?.reporta || ''
+  const esOperadorInicial = reportaInicial && !REPORTA_FIJOS.includes(reportaInicial)
+  const [reportaTipo, setReportaTipo] = useState(() => {
+    if (!reportaInicial) return ''
+    return esOperadorInicial ? 'OPERADOR' : reportaInicial
+  })
+  const [reportaOperador, setReportaOperador] = useState(esOperadorInicial ? reportaInicial : '')
   const [guardando, setGuardando] = useState(false)
 
   async function guardar() {
@@ -56,7 +66,12 @@ function ModalRegistro({ unidades, registro, onClose, onSave }: any) {
       alert('Completa unidad, fecha, categoría y detalles')
       return
     }
+    if (!reportaTipo || (reportaTipo === 'OPERADOR' && !reportaOperador)) {
+      alert('Indica quién reporta')
+      return
+    }
     setGuardando(true)
+    const reporta = reportaTipo === 'OPERADOR' ? reportaOperador : reportaTipo
     const data = {
       unidad_id: form.unidad_id,
       fecha: form.fecha,
@@ -67,6 +82,7 @@ function ModalRegistro({ unidades, registro, onClose, onSave }: any) {
       taller_mecanico: form.taller_mecanico || null,
       anexos: form.anexos || null,
       recomendaciones: form.recomendaciones || null,
+      reporta,
     }
     if (form.id) {
       await supabase.from('bitacora_unidades').update(data).eq('id', form.id)
@@ -111,6 +127,24 @@ function ModalRegistro({ unidades, registro, onClose, onSave }: any) {
             <input type="number" placeholder="ej. 150000" value={form.kilometraje} onChange={e => setForm({...form, kilometraje: e.target.value})}
               className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white" />
           </div>
+          <div>
+            <label className="text-xs text-gray-400 block mb-1">Reporta *</label>
+            <select value={reportaTipo} onChange={e => { setReportaTipo(e.target.value); if (e.target.value !== 'OPERADOR') setReportaOperador('') }}
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white">
+              <option value="">— Seleccionar —</option>
+              {OPCIONES_REPORTA.map(o => <option key={o} value={o}>{o}</option>)}
+            </select>
+          </div>
+          {reportaTipo === 'OPERADOR' && (
+            <div>
+              <label className="text-xs text-gray-400 block mb-1">¿Cuál operador? *</label>
+              <select value={reportaOperador} onChange={e => setReportaOperador(e.target.value)}
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white">
+                <option value="">— Seleccionar —</option>
+                {operadores.map((o: any) => <option key={o.id} value={o.nombre}>{o.nombre}</option>)}
+              </select>
+            </div>
+          )}
           <div className="col-span-2">
             <label className="text-xs text-gray-400 block mb-1">Detalles *</label>
             <textarea rows={3} value={form.detalles} onChange={e => setForm({...form, detalles: e.target.value})}
@@ -152,6 +186,7 @@ function ModalRegistro({ unidades, registro, onClose, onSave }: any) {
 
 export default function Bitacora() {
   const [unidades, setUnidades] = useState<any[]>([])
+  const [operadores, setOperadores] = useState<any[]>([])
   const [registros, setRegistros] = useState<any[]>([])
   const [unidadFiltro, setUnidadFiltro] = useState('')
   const [categoriaFiltro, setCategoriaFiltro] = useState('')
@@ -169,9 +204,11 @@ export default function Bitacora() {
   async function cargar() {
     setLoading(true)
     const { data: unis } = await supabase.from('unidades').select('*').eq('activo', true).order('nombre')
+    const { data: ops } = await supabase.from('operadores').select('*').eq('activo', true).order('nombre')
     const { data: regs } = await supabase.from('bitacora_unidades').select('*').order('fecha', { ascending: false })
     const { data: kms } = await supabase.from('kilometraje_unidades').select('*').order('fecha', { ascending: false })
     if (unis) setUnidades(unis)
+    if (ops) setOperadores(ops)
     if (regs) setRegistros(regs)
     if (kms) setKmRegistros(kms)
     setLoading(false)
@@ -301,6 +338,7 @@ export default function Bitacora() {
                         <th className="px-4 py-3 text-left">Unidad</th>
                         <th className="px-4 py-3 text-left">Categoría</th>
                         <th className="px-4 py-3 text-left">Detalles</th>
+                        <th className="px-4 py-3 text-left">Reporta</th>
                         <th className="px-4 py-3 text-right">Km</th>
                         <th className="px-4 py-3 text-right">Costo</th>
                         <th className="px-4 py-3 text-left">Taller</th>
@@ -310,7 +348,7 @@ export default function Bitacora() {
                     </thead>
                     <tbody>
                       {registrosFiltrados.length === 0 ? (
-                        <tr><td colSpan={9} className="text-center text-gray-500 py-12">No hay registros</td></tr>
+                        <tr><td colSpan={10} className="text-center text-gray-500 py-12">No hay registros</td></tr>
                       ) : registrosFiltrados.map((r, i) => {
                         const catColor = CAT_COLOR[r.categoria] || 'bg-gray-700 text-gray-300'
                         return (
@@ -323,6 +361,7 @@ export default function Bitacora() {
                             <td className="px-4 py-3 text-gray-300 text-xs max-w-xs">
                               <div className="line-clamp-2">{r.detalles}</div>
                             </td>
+                            <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">{r.reporta || '—'}</td>
                             <td className="px-4 py-3 text-right text-gray-400 text-xs whitespace-nowrap">
                               {r.kilometraje ? r.kilometraje.toLocaleString() : '—'}
                             </td>
@@ -480,6 +519,7 @@ export default function Bitacora() {
       {modal !== null && (
         <ModalRegistro
           unidades={unidades}
+          operadores={operadores}
           registro={modal.id ? modal : null}
           onClose={() => setModal(null)}
           onSave={() => { setModal(null); cargar() }}
