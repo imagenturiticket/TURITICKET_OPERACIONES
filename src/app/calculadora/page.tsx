@@ -11,6 +11,15 @@ const LABEL_TIPO: any = { tour_foraneo:'Tour foráneo', servicio_local:'Servicio
 const VIATICOS: any = { tour_foraneo:250, servicio_local:150, renta:450, transfer:0, transfer_especial:0, tour_transfer:450, jornada_8h:0, descanso:0, vacaciones:0, falta:0, oficina:0, otro:0 }
 const BONO_DERECHO: any = { tour_foraneo:true, servicio_local:false, renta:true, transfer:false, transfer_especial:false, tour_transfer:true, jornada_8h:false, descanso:false, vacaciones:false, falta:false, oficina:false, otro:false }
 
+// Tarifas especiales por destino específico (tienen prioridad sobre el viático plano por categoría)
+const VIATICOS_DESTINO: any = { 'PUEBLA': 450, 'DUERME EN PUEBLA': 250 }
+
+function obtenerPagoBase(tipoServicio: string, destino: string) {
+  const key = (destino || '').toUpperCase().trim()
+  if (VIATICOS_DESTINO[key] !== undefined) return VIATICOS_DESTINO[key]
+  return VIATICOS[tipoServicio] || 0
+}
+
 const DIAS_ES = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado']
 const MESES_ES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre']
 
@@ -96,7 +105,7 @@ export default function Calculadora() {
         const uid = `${a.fecha}-${a.operador_id}-${a.unidad_id}-${a.destino}-${a.tipo}`
         if (filas.some(f => f._uid === uid)) { duplicados++; continue }
         const tipoServicio = clasificarTipo(a.tipo, a.destino || '', a.nota || '')
-        const pagoBase = VIATICOS[tipoServicio] || 0
+        const pagoBase = obtenerPagoBase(tipoServicio, a.destino || '')
         const derecho = BONO_DERECHO[tipoServicio] || false
         const sucio = fechasSucio.has(a.fecha)
 
@@ -156,8 +165,12 @@ export default function Calculadora() {
       if (i !== idx) return f
       const updated = { ...f, [campo]: valor }
       if (campo === 'tipo_servicio') {
-        updated.pago_base = VIATICOS[valor] || 0
+        updated.pago_base = obtenerPagoBase(valor, updated.destino)
         if (!BONO_DERECHO[valor]) updated.bono = false
+      }
+      if (campo === 'destino') {
+        const key = (valor || '').toUpperCase().trim()
+        if (VIATICOS_DESTINO[key] !== undefined) updated.pago_base = VIATICOS_DESTINO[key]
       }
       return updated
     }))

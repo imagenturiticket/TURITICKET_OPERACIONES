@@ -29,7 +29,8 @@ const TIPO_BG: any = {
 
 const DESTINOS_TOUR = [
   'CATEMACO', 'TAJIN', 'XALAPA', 'ORIZABA', 'CEMPOALA',
-  'ROCA', 'ALVARADO', 'CAFE', 'DUNAS', 'RAFTING'
+  'ROCA', 'ALVARADO', 'CAFE', 'DUNAS', 'RAFTING',
+  'PUEBLA', 'DUERME EN PUEBLA'
 ]
 
 const FIJOS = ['Rafa', 'Chema', 'Hector', 'Hervert', 'Alfonso']
