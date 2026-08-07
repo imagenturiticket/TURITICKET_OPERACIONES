@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import nodemailer from 'nodemailer'
 
 export async function POST(req: NextRequest) {
   try {
@@ -8,12 +9,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Faltan datos' }, { status: 400 })
     }
 
-    const apiKey = process.env.RESEND_API_KEY
-    const from = process.env.RESEND_FROM || 'Turiticket <notificaciones@turiticket.com>'
+    const gmailUser = process.env.GMAIL_USER
+    const gmailPass = process.env.GMAIL_APP_PASSWORD
 
-    if (!apiKey) {
-      return NextResponse.json({ error: 'RESEND_API_KEY no configurado' }, { status: 500 })
+    if (!gmailUser || !gmailPass) {
+      return NextResponse.json({ error: 'GMAIL_USER o GMAIL_APP_PASSWORD no configurados' }, { status: 500 })
     }
+
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: gmailUser,
+        pass: gmailPass,
+      },
+    })
 
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; color:#1f2937;">
@@ -29,28 +38,15 @@ export async function POST(req: NextRequest) {
       </div>
     `
 
-    const resp = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from,
-        to: [to],
-        subject: 'Turiticket — Tienes un aviso pendiente de firma',
-        html,
-      }),
+    await transporter.sendMail({
+      from: `"Turiticket" <${gmailUser}>`,
+      to,
+      subject: 'Turiticket — Tienes un aviso pendiente de firma',
+      html,
     })
-
-    if (!resp.ok) {
-      const errText = await resp.text()
-      return NextResponse.json({ error: errText }, { status: 500 })
-    }
 
     return NextResponse.json({ ok: true })
   } catch (err: any) {
     return NextResponse.json({ error: err?.message || 'Error desconocido' }, { status: 500 })
   }
 }
-
