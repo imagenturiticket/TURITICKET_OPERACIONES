@@ -9,7 +9,7 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
-function ModalRegistro({ operadores, onClose, onSave }: any) {
+function ModalRegistro({ operadores, correosOficina, onClose, onSave }: any) {
   const [tipoPersona, setTipoPersona] = useState<'operador' | 'oficina'>('operador')
   const [operadorId, setOperadorId] = useState('')
   const [personaOficina, setPersonaOficina] = useState('')
@@ -31,10 +31,26 @@ function ModalRegistro({ operadores, onClose, onSave }: any) {
     setCorreoEdit(operadorSel?.correo || '')
   }, [operadorId])
 
+  // Correo de la persona de oficina seleccionada
+  const personaOficinaKey = personaOficina === 'OTRO' ? oficinaOtro.trim().toUpperCase() : personaOficina
+  const [correoOficinaEdit, setCorreoOficinaEdit] = useState('')
+
+  useEffect(() => {
+    setCorreoOficinaEdit(correosOficina[personaOficinaKey] || '')
+  }, [personaOficinaKey])
+
   async function guardarCorreo() {
     if (!operadorId || !correoEdit.trim()) return
     await supabase.from('operadores').update({ correo: correoEdit.trim() }).eq('id', operadorId)
     operadorSel.correo = correoEdit.trim()
+    setMensaje('✓ Correo guardado')
+    setTimeout(() => setMensaje(''), 2500)
+  }
+
+  async function guardarCorreoOficina() {
+    if (!personaOficinaKey || !correoOficinaEdit.trim()) return
+    await supabase.from('personal_oficina_correos').upsert({ persona: personaOficinaKey, correo: correoOficinaEdit.trim() })
+    correosOficina[personaOficinaKey] = correoOficinaEdit.trim()
     setMensaje('✓ Correo guardado')
     setTimeout(() => setMensaje(''), 2500)
   }
@@ -82,16 +98,18 @@ function ModalRegistro({ operadores, onClose, onSave }: any) {
       return
     }
 
-    // Notificación por correo si es un operador con correo guardado
-    if (tipoPersona === 'operador' && operadorSel?.correo) {
+    // Notificación por correo si hay un correo guardado (operador u oficina)
+    const correoDestino = tipoPersona === 'operador' ? operadorSel?.correo : correoOficinaEdit
+    const nombreDestino = tipoPersona === 'operador' ? operadorSel?.nombre : personaOficinaFinal
+    if (correoDestino) {
       try {
         const link = `${window.location.origin}/firmar/${token}`
         await fetch('/api/enviar-firma', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            to: operadorSel.correo,
-            nombre: operadorSel.nombre,
+            to: correoDestino,
+            nombre: nombreDestino,
             categoria: CATEGORIA_LABEL[categoria] || categoria,
             link,
           }),
@@ -162,6 +180,18 @@ function ModalRegistro({ operadores, onClose, onSave }: any) {
                 <input type="text" placeholder="Nombre" value={oficinaOtro} onChange={e => setOficinaOtro(e.target.value)}
                   className="w-full mt-2 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white" />
               )}
+              {personaOficinaKey && (
+                <div className="mt-2 flex gap-2 items-center">
+                  <input type="email" placeholder="correo@ejemplo.com" value={correoOficinaEdit} onChange={e => setCorreoOficinaEdit(e.target.value)}
+                    className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-xs text-white" />
+                  <button onClick={guardarCorreoOficina} className="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded-lg text-xs shrink-0">
+                    Guardar correo
+                  </button>
+                </div>
+              )}
+              {personaOficinaKey && !correosOficina[personaOficinaKey] && !correoOficinaEdit && (
+                <p className="text-[11px] text-yellow-500 mt-1">⚠️ Sin correo guardado — no se le podrá notificar automáticamente por correo (sí verá el aviso al iniciar sesión).</p>
+              )}
             </div>
           )}
 
@@ -229,6 +259,7 @@ function ModalRegistro({ operadores, onClose, onSave }: any) {
 
 export default function BitacoraPersonal() {
   const [operadores, setOperadores] = useState<any[]>([])
+  const [correosOficina, setCorreosOficina] = useState<any>({})
   const [registros, setRegistros] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(false)
@@ -240,8 +271,10 @@ export default function BitacoraPersonal() {
   async function cargar() {
     setLoading(true)
     const { data: ops } = await supabase.from('operadores').select('*').eq('activo', true).order('nombre')
+    const { data: correos } = await supabase.from('personal_oficina_correos').select('*')
     const { data: regs } = await supabase.from('bitacora_personal').select('*, operadores(nombre, correo)').order('fecha', { ascending: false })
     if (ops) setOperadores(ops)
+    if (correos) setCorreosOficina(Object.fromEntries(correos.map((c: any) => [c.persona, c.correo])))
     if (regs) setRegistros(regs)
     setLoading(false)
   }
@@ -263,8 +296,10 @@ export default function BitacoraPersonal() {
   }
 
   async function reenviarCorreo(r: any) {
-    if (!r.operadores?.correo) {
-      setMensaje('⚠️ Este operador no tiene correo guardado')
+    const correo = r.tipo_persona === 'operador' ? r.operadores?.correo : correosOficina[r.persona_oficina]
+    const nombre = r.tipo_persona === 'operador' ? r.operadores?.nombre : r.persona_oficina
+    if (!correo) {
+      setMensaje('⚠️ Esta persona no tiene correo guardado')
       setTimeout(() => setMensaje(''), 3000)
       return
     }
@@ -273,8 +308,8 @@ export default function BitacoraPersonal() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        to: r.operadores.correo,
-        nombre: r.operadores.nombre,
+        to: correo,
+        nombre,
         categoria: CATEGORIA_LABEL[r.categoria] || r.categoria,
         link,
       }),
@@ -355,11 +390,9 @@ export default function BitacoraPersonal() {
                                 <button onClick={() => copiarLink(r.token, r.id)} className="text-gray-500 hover:text-indigo-400 text-xs" title="Copiar link de firma">
                                   {copiadoId === r.id ? '✓ Copiado' : '🔗'}
                                 </button>
-                                {r.tipo_persona === 'operador' && (
-                                  <button onClick={() => reenviarCorreo(r)} className="text-gray-500 hover:text-indigo-400 text-xs" title="Reenviar correo">
-                                    ✉️
-                                  </button>
-                                )}
+                                <button onClick={() => reenviarCorreo(r)} className="text-gray-500 hover:text-indigo-400 text-xs" title="Reenviar correo">
+                                  ✉️
+                                </button>
                               </>
                             )}
                             <button onClick={() => eliminar(r)} className="text-gray-500 hover:text-red-400 text-xs">🗑</button>
@@ -378,6 +411,7 @@ export default function BitacoraPersonal() {
       {modal && (
         <ModalRegistro
           operadores={operadores}
+          correosOficina={correosOficina}
           onClose={() => setModal(false)}
           onSave={() => { setModal(false); cargar() }}
         />
@@ -385,4 +419,3 @@ export default function BitacoraPersonal() {
     </div>
   )
 }
-
