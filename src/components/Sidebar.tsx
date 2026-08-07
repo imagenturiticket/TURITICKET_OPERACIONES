@@ -2,12 +2,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useState, useEffect } from 'react'
-import { createClient } from '@supabase/supabase-js'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+import { createClient } from '@/lib/supabase'
 
 // Correos con acceso a la sección restringida de Bitácora de Personal
 const ACCESO_PERSONAL = ['zeus@turiticket.com', 'juan@turiticket.com', 'ama@turiticket.com']
@@ -30,6 +25,7 @@ export default function Sidebar() {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
   const [tieneAcceso, setTieneAcceso] = useState(false)
+  const supabase = createClient()
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -89,4 +85,3 @@ export default function Sidebar() {
     </aside>
   )
 }
-
