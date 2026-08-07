@@ -1,7 +1,16 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { createClient } from '@supabase/supabase-js'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
+
+// Correos con acceso a la sección restringida de Bitácora de Personal
+const ACCESO_PERSONAL = ['zeus@turiticket.com', 'juan@turiticket.com', 'ama@turiticket.com']
 
 const nav = [
   { href: '/',            icon: '📋', label: 'Asignaciones'   },
@@ -15,9 +24,19 @@ const nav = [
   { href: '/pendientes',  icon: '📌', label: 'Pendientes'     },
 ]
 
+const navRestringido = { href: '/personal', icon: '🗂️', label: 'Bitácora de Personal' }
+
 export default function Sidebar() {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
+  const [tieneAcceso, setTieneAcceso] = useState(false)
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      const email = data?.user?.email?.toLowerCase() || ''
+      setTieneAcceso(ACCESO_PERSONAL.includes(email))
+    })
+  }, [])
 
   return (
     <aside className={`flex flex-col bg-gray-900 border-r border-gray-800 transition-all duration-300 ${collapsed ? 'w-16' : 'w-52'} min-h-screen sticky top-0`}>
@@ -42,8 +61,32 @@ export default function Sidebar() {
             </Link>
           )
         })}
+
+        {tieneAcceso && (
+          <>
+            <div className={`my-1 border-t border-amber-900/40 ${collapsed ? 'mx-1' : 'mx-2'}`} />
+            <Link
+              href={navRestringido.href}
+              title={collapsed ? navRestringido.label : undefined}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors border ${
+                pathname === navRestringido.href
+                  ? 'bg-amber-600 text-white font-medium border-amber-500'
+                  : 'bg-amber-950/30 text-amber-200 border-amber-800/50 hover:bg-amber-900/40 hover:text-amber-100'
+              }`}
+            >
+              <span className="text-base shrink-0">{navRestringido.icon}</span>
+              {!collapsed && (
+                <span className="flex items-center gap-1">
+                  {navRestringido.label}
+                  <span className="text-[10px]" title="Acceso restringido">🔒</span>
+                </span>
+              )}
+            </Link>
+          </>
+        )}
       </nav>
       {!collapsed && <div className="px-4 py-3 border-t border-gray-800"><p className="text-xs text-gray-600">© 2026 Turiticket</p></div>}
     </aside>
   )
 }
+
