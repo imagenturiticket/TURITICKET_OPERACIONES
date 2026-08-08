@@ -257,11 +257,42 @@ function ModalRegistro({ operadores, correosOficina, onClose, onSave }: any) {
   )
 }
 
+const TIPOS_INCIDENCIA: any = {
+  unidad_sucia: { label: 'Unidad sucia', color: 'bg-orange-900 text-orange-200' },
+  llegada_tarde: { label: 'Llegada tarde', color: 'bg-yellow-900 text-yellow-200' },
+  falta: { label: 'Falta', color: 'bg-red-900 text-red-200' },
+  otro: { label: 'Otro', color: 'bg-gray-700 text-gray-200' },
+}
+
 function ModalExpediente({ persona, registros, onClose }: any) {
+  const [otros, setOtros] = useState<any[]>([])
+  const [cargandoOtros, setCargandoOtros] = useState(false)
+
+  useEffect(() => {
+    if (persona.tipo !== 'operador' || !persona.id) return
+    setCargandoOtros(true)
+    Promise.all([
+      supabase.from('vacaciones').select('*').eq('operador_id', persona.id),
+      supabase.from('reportes_incidencia').select('*, unidades(nombre)').eq('operador_responsable_id', persona.id),
+    ]).then(([vacRes, repRes]) => {
+      const vacItems = (vacRes.data || []).map((v: any) => ({
+        id: 'vac-' + v.id, fuente: 'vacaciones', fecha: v.fecha_inicio, fecha_fin: v.fecha_fin, nota: v.nota,
+      }))
+      const repItems = (repRes.data || []).map((r: any) => ({
+        id: 'rep-' + r.id, fuente: 'incidencia', fecha: r.fecha, tipo: r.tipo, descripcion: r.descripcion,
+        unidad: r.unidades?.nombre, bono_descontado: r.bono_descontado,
+      }))
+      setOtros([...vacItems, ...repItems])
+      setCargandoOtros(false)
+    })
+  }, [persona.tipo, persona.id])
+
   const propios = registros.filter((r: any) => {
     if (persona.tipo === 'operador') return r.tipo_persona === 'operador' && r.operador_id === persona.id
     return r.tipo_persona === 'oficina' && r.persona_oficina === persona.nombre
   })
+  const timeline = [...propios.map((r: any) => ({ ...r, fuente: 'personal' })), ...otros]
+    .sort((a, b) => (a.fecha < b.fecha ? 1 : -1))
   const firmados = propios.filter((r: any) => r.firmado).length
   const pendientes = propios.length - firmados
 
@@ -273,9 +304,9 @@ function ModalExpediente({ persona, registros, onClose }: any) {
         <h2 className="text-lg font-bold text-white mb-1">{persona.nombre}</h2>
         <p className="text-xs text-gray-500 mb-4">{persona.tipo === 'operador' ? 'Operador' : 'Oficina'}</p>
 
-        <div className="grid grid-cols-3 gap-3 mb-5">
+        <div className={`grid gap-3 mb-5 ${persona.tipo === 'operador' ? 'grid-cols-4' : 'grid-cols-3'}`}>
           <div className="bg-gray-800 rounded-lg p-3 text-center">
-            <p className="text-2xl font-bold text-white">{propios.length}</p>
+            <p className="text-2xl font-bold text-white">{timeline.length}</p>
             <p className="text-[11px] text-gray-400">Registros totales</p>
           </div>
           <div className="bg-gray-800 rounded-lg p-3 text-center">
@@ -286,12 +317,45 @@ function ModalExpediente({ persona, registros, onClose }: any) {
             <p className="text-2xl font-bold text-yellow-500">{pendientes}</p>
             <p className="text-[11px] text-gray-400">Pendientes</p>
           </div>
+          {persona.tipo === 'operador' && (
+            <div className="bg-gray-800 rounded-lg p-3 text-center">
+              <p className="text-2xl font-bold text-blue-400">{otros.length}</p>
+              <p className="text-[11px] text-gray-400">Vacac. / Incidencias</p>
+            </div>
+          )}
         </div>
 
         <div className="space-y-3">
-          {propios.length === 0 ? (
+          {cargandoOtros && <p className="text-center text-gray-500 text-xs py-2">Cargando historial completo...</p>}
+          {timeline.length === 0 ? (
             <p className="text-center text-gray-500 py-8 text-sm">No hay registros para esta persona</p>
-          ) : propios.map((r: any) => {
+          ) : timeline.map((r: any) => {
+            if (r.fuente === 'vacaciones') {
+              return (
+                <div key={r.id} className="bg-gray-800 rounded-xl p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-xs text-gray-400">{formatFecha(r.fecha)}</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-blue-900 text-blue-200">🏖️ Vacaciones</span>
+                  </div>
+                  <p className="text-sm text-gray-200">Del {formatFecha(r.fecha)} al {formatFecha(r.fecha_fin)}</p>
+                  {r.nota && <p className="text-xs text-gray-400 mt-1">{r.nota}</p>}
+                </div>
+              )
+            }
+            if (r.fuente === 'incidencia') {
+              const tipoInfo = TIPOS_INCIDENCIA[r.tipo] || TIPOS_INCIDENCIA.otro
+              return (
+                <div key={r.id} className="bg-gray-800 rounded-xl p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-xs text-gray-400">{formatFecha(r.fecha)}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${tipoInfo.color}`}>🚨 {tipoInfo.label}</span>
+                  </div>
+                  <p className="text-sm text-gray-200">{r.descripcion}</p>
+                  {r.unidad && <p className="text-xs text-gray-500 mt-1">Unidad: {r.unidad}</p>}
+                  {r.bono_descontado && <p className="text-xs text-red-400 mt-1">💸 Se le descontó el bono ese día</p>}
+                </div>
+              )
+            }
             const catColor = CATEGORIA_COLOR[r.categoria] || 'bg-gray-700 text-gray-300'
             return (
               <div key={r.id} className="bg-gray-800 rounded-xl p-4">
