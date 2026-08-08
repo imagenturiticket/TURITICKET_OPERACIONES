@@ -1,50 +1,60 @@
-import { NextRequest, NextResponse } from 'next/server'
-import nodemailer from 'nodemailer'
+import { NextRequest, NextResponse } from 'next/server';
+import nodemailer from 'nodemailer';
 
 export async function POST(req: NextRequest) {
   try {
-    const { to, nombre, aprobado, tipoPermisoLabel, fecha, comentario } = await req.json()
+    const { correo, nombre, tipoPermiso, estado, comentario } = await req.json();
 
-    if (!to) {
-      return NextResponse.json({ error: 'Faltan datos' }, { status: 400 })
+    if (!correo) {
+      return NextResponse.json({ ok: false, motivo: 'sin_correo' });
     }
 
-    const gmailUser = process.env.GMAIL_USER
-    const gmailPass = process.env.GMAIL_APP_PASSWORD
+    const TIPO_LABEL: Record<string, string> = {
+      dia_descanso: 'Día de descanso',
+      falta: 'Falta',
+      llegada_tarde: 'Llegada tarde',
+      cambio_descanso: 'Cambio de descanso',
+    };
 
-    if (!gmailUser || !gmailPass) {
-      return NextResponse.json({ error: 'GMAIL_USER o GMAIL_APP_PASSWORD no configurados' }, { status: 500 })
-    }
+    const aprobado = estado === 'aprobado';
+    const asunto = aprobado
+      ? 'Tu solicitud de permiso fue autorizada'
+      : 'Tu solicitud de permiso fue rechazada';
 
     const transporter = nodemailer.createTransport({
       service: 'gmail',
-      auth: { user: gmailUser, pass: gmailPass },
-    })
-
-    const colorEstado = aprobado ? '#16a34a' : '#dc2626'
-    const textoEstado = aprobado ? 'APROBADA ✅' : 'RECHAZADA ❌'
+      auth: {
+        user: process.env.GMAIL_USER,
+        pass: process.env.GMAIL_APP_PASSWORD,
+      },
+    });
 
     const html = `
-      <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; color:#1f2937;">
-        <h2 style="color:#4f46e5;">Turiticket Operaciones</h2>
-        <p>Hola ${nombre || ''},</p>
-        <p>Tu solicitud de permiso (<strong>${tipoPermisoLabel || ''}</strong>, ${fecha || ''}) fue:</p>
-        <p style="font-size:18px; font-weight:bold; color:${colorEstado};">${textoEstado}</p>
-        ${comentario ? `<p style="font-size:14px; color:#374151;"><strong>Comentario:</strong> ${comentario}</p>` : ''}
-        <p style="font-size:12px; color:#6b7280; margin-top:24px;">Este es un correo automático de Turiticket Operaciones.</p>
+      <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto;">
+        <div style="background:#284D71; padding:16px; border-radius:8px 8px 0 0;">
+          <p style="color:white; margin:0; font-size:12px; letter-spacing:0.05em;">TURITICKET</p>
+          <h2 style="color:white; margin:4px 0 0;">Solicitud de Permiso</h2>
+        </div>
+        <div style="border:1px solid #eee; padding:20px; border-radius:0 0 8px 8px;">
+          <p>Hola ${nombre},</p>
+          <p>Tu solicitud de <strong>${TIPO_LABEL[tipoPermiso] || tipoPermiso}</strong> fue
+          <strong style="color:${aprobado ? '#16a34a' : '#D9272D'};">${aprobado ? 'AUTORIZADA' : 'RECHAZADA'}</strong>.</p>
+          ${comentario ? `<p><em>Comentario de tu coordinador:</em><br/>${comentario}</p>` : ''}
+          <p style="color:#888; font-size:13px; margin-top:24px;">Turiticket Operaciones</p>
+        </div>
       </div>
-    `
+    `;
 
     await transporter.sendMail({
-      from: `"Turiticket" <${gmailUser}>`,
-      to,
-      subject: `Turiticket — Tu solicitud de permiso fue ${aprobado ? 'aprobada' : 'rechazada'}`,
+      from: `"Turiticket" <${process.env.GMAIL_USER}>`,
+      to: correo,
+      subject: asunto,
       html,
-    })
+    });
 
-    return NextResponse.json({ ok: true })
-  } catch (err: any) {
-    return NextResponse.json({ error: err?.message || 'Error desconocido' }, { status: 500 })
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    console.error('Error enviando correo de permiso:', err);
+    return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });
   }
 }
-
