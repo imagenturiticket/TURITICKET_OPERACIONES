@@ -22,7 +22,7 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
 
   const isLoginPage = request.nextUrl.pathname === '/login'
-  const esRutaPublica = isLoginPage || request.nextUrl.pathname.startsWith('/firmar/')
+  const esRutaPublica = isLoginPage || request.nextUrl.pathname.startsWith('/firmar/') || request.nextUrl.pathname.startsWith('/solicitud-permiso')
 
   if (!user && !esRutaPublica) {
     const url = request.nextUrl.clone()
@@ -42,3 +42,4 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: ['/((?!_next/static|_next/image|favicon.ico|api).*)'],
 }
+

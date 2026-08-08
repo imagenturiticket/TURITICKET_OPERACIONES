@@ -1,3 +1,11 @@
+export const TIPOS_PERMISO = [
+  { value: 'dia_descanso',   label: 'Día de descanso' },
+  { value: 'falta',          label: 'Falta' },
+  { value: 'llegada_tarde',  label: 'Llegada tarde' },
+  { value: 'cambio_descanso', label: 'Cambio de descanso' },
+]
+export const TIPO_PERMISO_LABEL: any = Object.fromEntries(TIPOS_PERMISO.map(t => [t.value, t.label]))
+
 export const OFICINA_PERSONAS = ['ZEUS', 'LIC.JUAN', 'AMA', 'OSMAR', 'GABY', 'MICHELL', 'MARI']
 export const OPCIONES_REPORTA = ['ZEUS', 'LIC.JUAN', 'AMA', 'OPERADOR']
 
@@ -43,4 +51,5 @@ export async function calcularHash(payload: string) {
   const buffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(payload))
   return Array.from(new Uint8Array(buffer)).map(b => b.toString(16).padStart(2, '0')).join('')
 }
+
 
