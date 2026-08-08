@@ -257,12 +257,80 @@ function ModalRegistro({ operadores, correosOficina, onClose, onSave }: any) {
   )
 }
 
+function ModalExpediente({ persona, registros, onClose }: any) {
+  const propios = registros.filter((r: any) => {
+    if (persona.tipo === 'operador') return r.tipo_persona === 'operador' && r.operador_id === persona.id
+    return r.tipo_persona === 'oficina' && r.persona_oficina === persona.nombre
+  })
+  const firmados = propios.filter((r: any) => r.firmado).length
+  const pendientes = propios.length - firmados
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/70" />
+      <div className="relative bg-gray-900 rounded-2xl p-6 w-full max-w-2xl border border-gray-700 shadow-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <button onClick={onClose} className="absolute top-4 right-4 text-gray-500 hover:text-white text-xl">×</button>
+        <h2 className="text-lg font-bold text-white mb-1">{persona.nombre}</h2>
+        <p className="text-xs text-gray-500 mb-4">{persona.tipo === 'operador' ? 'Operador' : 'Oficina'}</p>
+
+        <div className="grid grid-cols-3 gap-3 mb-5">
+          <div className="bg-gray-800 rounded-lg p-3 text-center">
+            <p className="text-2xl font-bold text-white">{propios.length}</p>
+            <p className="text-[11px] text-gray-400">Registros totales</p>
+          </div>
+          <div className="bg-gray-800 rounded-lg p-3 text-center">
+            <p className="text-2xl font-bold text-green-400">{firmados}</p>
+            <p className="text-[11px] text-gray-400">Firmados</p>
+          </div>
+          <div className="bg-gray-800 rounded-lg p-3 text-center">
+            <p className="text-2xl font-bold text-yellow-500">{pendientes}</p>
+            <p className="text-[11px] text-gray-400">Pendientes</p>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          {propios.length === 0 ? (
+            <p className="text-center text-gray-500 py-8 text-sm">No hay registros para esta persona</p>
+          ) : propios.map((r: any) => {
+            const catColor = CATEGORIA_COLOR[r.categoria] || 'bg-gray-700 text-gray-300'
+            return (
+              <div key={r.id} className="bg-gray-800 rounded-xl p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-400">{formatFecha(r.fecha)}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${catColor}`}>{CATEGORIA_LABEL[r.categoria] || r.categoria}</span>
+                  </div>
+                  {r.firmado ? (
+                    <span className="text-green-400 text-xs">✅ Firmado {formatFechaHora(r.firmado_en)}</span>
+                  ) : (
+                    <span className="text-yellow-500 text-xs">⏳ Pendiente</span>
+                  )}
+                </div>
+                <p className="text-sm text-gray-200 mb-1">{r.detalles}</p>
+                {r.monto && <p className="text-sm text-green-400 font-medium mb-2">${parseFloat(r.monto).toLocaleString()}</p>}
+                <p className="text-[11px] text-gray-500 mb-2">Reporta: {r.reporta || '—'}</p>
+                {r.firmado && r.firma_imagen && (
+                  <div className="mt-2">
+                    <p className="text-[11px] text-gray-500 mb-1">Firma:</p>
+                    <img src={r.firma_imagen} alt="Firma" className="bg-white rounded-lg max-w-[220px]" />
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function BitacoraPersonal() {
   const [operadores, setOperadores] = useState<any[]>([])
   const [correosOficina, setCorreosOficina] = useState<any>({})
   const [registros, setRegistros] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(false)
+  const [personaDetalle, setPersonaDetalle] = useState<any>(null)
   const [mensaje, setMensaje] = useState('')
   const [copiadoId, setCopiadoId] = useState('')
 
@@ -362,8 +430,13 @@ export default function BitacoraPersonal() {
                     return (
                       <tr key={r.id} className={`border-b border-gray-800 hover:bg-gray-800/50 ${i % 2 === 0 ? '' : 'bg-gray-950'}`}>
                         <td className="px-4 py-3 text-gray-300 text-xs whitespace-nowrap">{formatFecha(r.fecha)}</td>
-                        <td className="px-4 py-3 font-medium text-white whitespace-nowrap">
-                          {persona}
+                        <td className="px-4 py-3 font-medium whitespace-nowrap">
+                          <button
+                            onClick={() => setPersonaDetalle({ tipo: r.tipo_persona, id: r.operador_id, nombre: persona })}
+                            className="text-white hover:text-indigo-400 hover:underline text-left"
+                          >
+                            {persona}
+                          </button>
                           <span className="block text-[10px] text-gray-500 font-normal">{r.tipo_persona === 'operador' ? 'Operador' : 'Oficina'}</span>
                         </td>
                         <td className="px-4 py-3">
@@ -407,6 +480,14 @@ export default function BitacoraPersonal() {
           </div>
         )}
       </div>
+
+      {personaDetalle && (
+        <ModalExpediente
+          persona={personaDetalle}
+          registros={registros}
+          onClose={() => setPersonaDetalle(null)}
+        />
+      )}
 
       {modal && (
         <ModalRegistro
