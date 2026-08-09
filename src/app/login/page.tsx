@@ -15,7 +15,10 @@ export default function Login() {
   async function handleLogin() {
     setLoading(true)
     setError('')
-    const email = `${usuario.trim().toLowerCase()}@turiticket.com`
+    const entrada = usuario.trim().toLowerCase()
+    // Si ya escribió un correo completo, se usa tal cual.
+    // Si solo escribió el nombre de usuario, se le agrega @turiticket.com
+    const email = entrada.includes('@') ? entrada : `${entrada}@turiticket.com`
     const { error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) {
       setError('Usuario o contraseña incorrectos')
@@ -36,12 +39,12 @@ export default function Login() {
 
         <div className="space-y-4">
           <div>
-            <label className="text-gray-400 text-sm block mb-1">Usuario</label>
+            <label className="text-gray-400 text-sm block mb-1">Usuario o correo</label>
             <input
               type="text"
               value={usuario}
               onChange={e => setUsuario(e.target.value)}
-              placeholder="Usuario"
+              placeholder="usuario o correo@ejemplo.com"
               className="w-full bg-gray-800 border border-gray-700 text-white px-4 py-3 rounded-lg focus:outline-none focus:border-indigo-500"
               onKeyDown={e => e.key === 'Enter' && handleLogin()}
             />
