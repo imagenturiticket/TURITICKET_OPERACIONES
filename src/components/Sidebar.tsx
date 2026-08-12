@@ -3,18 +3,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase'
-
-// Correos con acceso a la sección restringida (Bitácora de Personal y
-// Solicitudes de Permiso). Se aceptan tanto las cuentas @turiticket.com
-// como los correos personales de Gmail.
-const ACCESO_PERSONAL = [
-  'zeus@turiticket.com',
-  'juan@turiticket.com',
-  'ama@turiticket.com',
-  'imagen.turiticket@gmail.com',
-  'gerencia.turiticket@gmail.com',
-  'juan.hughes.mendoza@gmail.com',
-]
+import { tieneAccesoPersonal } from '@/lib/acceso'
 
 // Minutos de inactividad antes de cerrar la sesión
 const MINUTOS_INACTIVIDAD = 30
@@ -58,7 +47,7 @@ export default function Sidebar() {
     supabase.auth.getUser().then(({ data }) => {
       const email = data?.user?.email?.toLowerCase() || ''
       setUsuario(email || null)
-      setTieneAcceso(ACCESO_PERSONAL.includes(email))
+      setTieneAcceso(tieneAccesoPersonal(email))
       setCargando(false)
     })
   }, [supabase])
