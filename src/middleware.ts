@@ -1,6 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
-import { tieneAccesoPersonal, esRutaRestringida } from '@/lib/acceso'
+import { esRutaPublica, puedeVerRuta } from '@/lib/acceso'
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
@@ -24,13 +24,9 @@ export async function middleware(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname
   const isLoginPage = pathname === '/login'
-  const esRutaPublica =
-    isLoginPage ||
-    pathname.startsWith('/firmar/') ||
-    pathname.startsWith('/solicitud-permiso')
 
   // Sin sesión: solo puede ver las rutas públicas
-  if (!user && !esRutaPublica) {
+  if (!user && !esRutaPublica(pathname)) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)
@@ -43,9 +39,10 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // Con sesión pero SIN permiso: no puede abrir /personal ni /solicitudes,
-  // aunque escriba la dirección a mano en el navegador.
-  if (user && esRutaRestringida(pathname) && !tieneAccesoPersonal(user.email)) {
+  // Con sesión pero sin permiso para esta pantalla:
+  // se le regresa a Asignaciones, aunque haya escrito la
+  // dirección a mano en el navegador.
+  if (user && !puedeVerRuta(pathname, user.email)) {
     const url = request.nextUrl.clone()
     url.pathname = '/'
     url.search = ''

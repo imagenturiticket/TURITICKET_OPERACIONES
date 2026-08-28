@@ -3,13 +3,15 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase'
-import { tieneAccesoPersonal } from '@/lib/acceso'
+import { esAdmin, esRutaDeTodos } from '@/lib/acceso'
 
 // Minutos de inactividad antes de cerrar la sesión
 const MINUTOS_INACTIVIDAD = 30
 // Segundos de aviso previo antes del cierre
 const SEGUNDOS_AVISO = 60
 
+// Menú de operación. Las marcadas como paraTodos las ve cualquiera
+// con sesión; las demás solo administración (Zeus, Ama, Lic. Juan).
 const nav = [
   { href: '/',            icon: '📋', label: 'Asignaciones'   },
   { href: '/historial',   icon: '📅', label: 'Historial'      },
@@ -31,7 +33,7 @@ export default function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
   const [collapsed, setCollapsed] = useState(false)
-  const [tieneAcceso, setTieneAcceso] = useState(false)
+  const [admin, setAdmin] = useState(false)
   const [usuario, setUsuario] = useState<string | null>(null)
   const [cargando, setCargando] = useState(true)
   const [avisoVisible, setAvisoVisible] = useState(false)
@@ -47,7 +49,7 @@ export default function Sidebar() {
     supabase.auth.getUser().then(({ data }) => {
       const email = data?.user?.email?.toLowerCase() || ''
       setUsuario(email || null)
-      setTieneAcceso(tieneAccesoPersonal(email))
+      setAdmin(esAdmin(email))
       setCargando(false)
     })
   }, [supabase])
@@ -122,6 +124,9 @@ export default function Sidebar() {
 
   const solicitudActiva = pathname === '/solicitud-permiso'
 
+  // Solo se muestran los botones que esta persona realmente puede abrir
+  const navVisible = admin ? nav : nav.filter((i) => esRutaDeTodos(i.href))
+
   return (
     <>
       <aside className={`flex flex-col bg-gray-900 border-r border-gray-800 transition-all duration-300 ${collapsed ? 'w-16' : 'w-52'} min-h-screen sticky top-0`}>
@@ -138,8 +143,8 @@ export default function Sidebar() {
         </div>
 
         <nav className="flex flex-col gap-1 p-2 flex-1">
-          {/* Menú de Operaciones: solo con sesión iniciada */}
-          {!cargando && usuario && nav.map(({ href, icon, label }) => {
+          {/* Menú de operación: solo con sesión iniciada */}
+          {!cargando && usuario && navVisible.map(({ href, icon, label }) => {
             const active = pathname === href
             return (
               <Link key={href} href={href} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${active ? 'bg-indigo-600 text-white font-medium' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`} title={collapsed ? label : undefined}>
@@ -170,8 +175,8 @@ export default function Sidebar() {
             </>
           )}
 
-          {/* Sección restringida: solo los correos autorizados */}
-          {!cargando && tieneAcceso && (
+          {/* Sección restringida: solo administración */}
+          {!cargando && admin && (
             <>
               <div className={`my-1 border-t border-amber-900/40 ${collapsed ? 'mx-1' : 'mx-2'}`} />
               {navRestringido.map(({ href, icon, label }) => (
