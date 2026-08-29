@@ -461,10 +461,16 @@ export default function BitacoraPersonal() {
             <h1 className="text-2xl font-semibold">🗂️ Bitácora de Personal</h1>
             <p className="text-gray-400 text-sm">Registro y seguimiento de personal — oficina y operadores</p>
           </div>
-          <button onClick={() => setModal(true)}
-            className="bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-lg text-sm font-medium">
-            + Nuevo registro
-          </button>
+          <div className="flex gap-2">
+            <a href="/personal/contactos"
+              className="bg-gray-800 hover:bg-gray-700 border border-gray-700 px-4 py-2 rounded-lg text-sm font-medium">
+              📇 Contactos
+            </a>
+            <button onClick={() => setModal(true)}
+              className="bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-lg text-sm font-medium">
+              + Nuevo registro
+            </button>
+          </div>
         </div>
 
         {mensaje && <p className="text-sm text-yellow-400 mb-3">{mensaje}</p>}
