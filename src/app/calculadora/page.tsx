@@ -313,27 +313,37 @@ export default function Calculadora() {
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' })
 
     const grupos = agruparPorDia(filas)
+    // Cuántos renglones de texto tendrá la tabla en total
+    // (un día con dos actividades cuenta como dos)
+    const totalLineas = grupos.reduce((s: number, g: any) => s + g.items.length, 0)
+
+    // El tamaño de la tabla se ajusta solo para que TODO quepa
+    // en una sola hoja, sin importar cuántos días traiga el periodo.
+    let fs = 7.5, pad = 1.5
+    if (totalLineas > 16) { fs = 6.8; pad = 1.1 }
+    if (totalLineas > 24) { fs = 6.0; pad = 0.8 }
+    if (totalLineas > 32) { fs = 5.3; pad = 0.6 }
+    if (totalLineas > 36) { fs = 5.0; pad = 0.5 }
 
     doc.setFillColor(67, 56, 202)
-    doc.rect(0, 0, 216, 18, 'F')
+    doc.rect(0, 0, 216, 16, 'F')
     doc.setTextColor(255,255,255)
-    doc.setFontSize(13); doc.setFont('helvetica','bold')
-    doc.text('Recibo de Pago', 15, 11)
+    doc.setFontSize(12.5); doc.setFont('helvetica','bold')
+    doc.text('Recibo de Pago', 15, 10.5)
     doc.setTextColor(0,0,0)
 
-    doc.setFontSize(11); doc.setFont('helvetica','bold')
-    doc.text(`Operador: ${op?.nombre?.toUpperCase() || ''}`, 15, 27)
-    doc.setFont('helvetica','normal'); doc.setFontSize(9)
+    doc.setFontSize(10.5); doc.setFont('helvetica','bold')
+    doc.text(`Operador: ${op?.nombre?.toUpperCase() || ''}`, 15, 24)
+    doc.setFont('helvetica','normal'); doc.setFontSize(8.5)
     const [yi,mi,di] = fechaInicio.split('-').map(Number)
     const [yf,mf,df] = fechaFin.split('-').map(Number)
-    doc.text(`Periodo: ${di} de ${MESES_ES[mi-1]} al ${df} de ${MESES_ES[mf-1]} de ${yf}`, 15, 33)
-    doc.text(`Fecha de generación: ${new Date().toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}`, 15, 39)
-    doc.text(`Estado: ${estado.toUpperCase()}`, 15, 45)
+    doc.text(`Periodo: ${di} de ${MESES_ES[mi-1]} al ${df} de ${MESES_ES[mf-1]} de ${yf}`, 15, 29.5)
+    doc.text(`Generado: ${new Date().toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}   —   Estado: ${estado.toUpperCase()}`, 15, 34.5)
 
     const esTrabajado = (f: any) => !['descanso','vacaciones','falta'].includes(f.tipo_servicio)
 
     autoTable(doc, {
-      startY: 51,
+      startY: 39,
       head: [['Fecha','Unidad','Destino','Tipo','Viát.','Bono','Festivo','Extra','Desc.','Total']],
       body: grupos.map(g => {
         const items = g.items
@@ -358,11 +368,11 @@ export default function Calculadora() {
           hayTrabajado || sumFest > 0 ? `$${sumTotal}` : '—',
         ]
       }),
-      styles: { fontSize: 7.5, cellPadding: 1.5, valign: 'middle' },
-      headStyles: { fillColor:[67,56,202], textColor:255, fontStyle:'bold', fontSize:8 },
+      styles: { fontSize: fs, cellPadding: pad, valign: 'middle' },
+      headStyles: { fillColor:[67,56,202], textColor:255, fontStyle:'bold', fontSize: fs + 0.3 },
       columnStyles: {
         0:{cellWidth:38}, 1:{cellWidth:18}, 2:{cellWidth:22},
-        3:{cellWidth:25, cellPadding:{ top:1.5, bottom:1.5, left:5.5, right:1.5 }},
+        3:{cellWidth:25, cellPadding:{ top:pad, bottom:pad, left:5.2, right:pad }},
         4:{cellWidth:12,halign:'center'}, 5:{cellWidth:12,halign:'center'},
         6:{cellWidth:14,halign:'center'}, 7:{cellWidth:12,halign:'center'},
         8:{cellWidth:12,halign:'center'}, 9:{cellWidth:16,halign:'right'},
@@ -395,17 +405,18 @@ export default function Calculadora() {
         if (!g) return
         const items = g.items
         const alto = data.cell.height / items.length
+        const lado = Math.max(1.6, Math.min(2.5, alto - 1))
         items.forEach((f: any, i: number) => {
           const c = colorDe(f)
           if (!c) return
           doc.setFillColor(c.rgb[0], c.rgb[1], c.rgb[2])
-          doc.rect(data.cell.x + 1.6, data.cell.y + alto*i + alto/2 - 1.25, 2.5, 2.5, 'F')
+          doc.rect(data.cell.x + 1.5, data.cell.y + alto*i + alto/2 - lado/2, lado, lado, 'F')
         })
       }
     })
 
     // ---------- Leyenda de colores ----------
-    let y = (doc as any).lastAutoTable.finalY + 4
+    let y = (doc as any).lastAutoTable.finalY + 3
     doc.setFontSize(6.5); doc.setFont('helvetica','normal')
     let xl = 15
     for (const k of ['tour','local','oficina','renta','puebla','duerme']) {
@@ -417,7 +428,7 @@ export default function Calculadora() {
       xl += doc.getTextWidth(c.label) + 10
     }
     doc.setTextColor(0,0,0)
-    y += 8
+    y += 6
 
     // ---------- Resumen ----------
     // Las líneas se acomodan una debajo de otra con un contador,
@@ -434,9 +445,11 @@ export default function Calculadora() {
       lineas.push({ etiqueta:`Desc. especial — ${d.concepto || 'sin concepto'}:`, valor:`-$${m.toLocaleString()}`, color:[200,50,50] })
     }
 
-    const altoCaja = Math.max(52, 16 + lineas.length * 7)
-    if (y + altoCaja > 250) { doc.addPage(); y = 20 }
-
+    // El resumen también se aprieta si trae muchas líneas,
+    // para no empujar las firmas fuera de la hoja.
+    const espLinea = lineas.length > 8 ? 5.2 : lineas.length > 6 ? 5.8 : 6.5
+    const fsResumen = lineas.length > 8 ? 7.5 : 8.5
+    const altoCaja = Math.max(46, 14 + lineas.length * espLinea)
     doc.setFillColor(245,245,250)
     doc.rect(15, y, 186, altoCaja, 'F')
     doc.setDrawColor(200,200,210)
@@ -444,11 +457,11 @@ export default function Calculadora() {
     doc.setFontSize(9); doc.setFont('helvetica','bold')
     doc.setTextColor(67,56,202)
     doc.text('RESUMEN DE PAGO', 20, y+6)
-    doc.setTextColor(0,0,0); doc.setFont('helvetica','normal'); doc.setFontSize(8.5)
+    doc.setTextColor(0,0,0); doc.setFont('helvetica','normal'); doc.setFontSize(fsResumen)
 
     const col1=20, col2=88, col3=138
     lineas.forEach((ln, i) => {
-      const yy = y + 13 + i*7
+      const yy = y + 12.5 + i*espLinea
       if (ln.color) doc.setTextColor(ln.color[0], ln.color[1], ln.color[2])
       doc.setFont('helvetica','normal')
       doc.text(ln.etiqueta, col1, yy)
@@ -466,42 +479,45 @@ export default function Calculadora() {
     doc.setFontSize(12); doc.setFont('helvetica','bold')
     doc.text(`$${totalPagar.toLocaleString()}`, col3, y+15)
     doc.setTextColor(0,0,0); doc.setFont('helvetica','normal'); doc.setFontSize(8.5)
-    doc.text(`Pago transferencia: $${pagoTransferencia.toLocaleString()}`, col3, y+24)
-    doc.text(`Pago efectivo: $${pagoEfectivo.toLocaleString()}`, col3, y+31)
+    doc.text(`Pago transferencia: $${pagoTransferencia.toLocaleString()}`, col3, y+23)
+    doc.text(`Pago efectivo: $${pagoEfectivo.toLocaleString()}`, col3, y+29.5)
     const cs = saldoPendiente>0?[200,50,50]:[50,150,80]
     doc.setTextColor(cs[0],cs[1],cs[2]); doc.setFont('helvetica','bold')
-    doc.text(`Saldo pendiente: $${saldoPendiente.toLocaleString()}`, col3, y+38)
+    doc.text(`Saldo pendiente: $${saldoPendiente.toLocaleString()}`, col3, y+36)
     doc.setTextColor(0,0,0); doc.setFont('helvetica','normal')
 
     // ---------- Firmas ----------
-    y += altoCaja + 8
-    if (y + 42 > 265) { doc.addPage(); y = 20 }
+    y += altoCaja + 5
+    // Última defensa: si de plano no cabe, se baja lo más posible
+    // en la misma hoja antes de partir a una segunda.
+    const ALTO_FIRMAS = 30
+    if (y + ALTO_FIRMAS > 270) y = 270 - ALTO_FIRMAS
     doc.setFillColor(250,250,252)
-    doc.rect(15, y, 186, 42, 'F')
+    doc.rect(15, y, 186, ALTO_FIRMAS, 'F')
     doc.setDrawColor(200,200,210)
-    doc.rect(15, y, 186, 42, 'S')
+    doc.rect(15, y, 186, ALTO_FIRMAS, 'S')
 
     doc.setFontSize(9); doc.setFont('helvetica','bold')
     doc.setTextColor(67,56,202)
-    doc.text('FIRMAS', 20, y+7)
+    doc.text('FIRMAS', 20, y+6)
     doc.setTextColor(0,0,0); doc.setFont('helvetica','normal')
 
     doc.setFontSize(7.5); doc.setTextColor(120,120,120)
-    doc.text('Recibí de conformidad el pago descrito en este documento.', 20, y+13)
+    doc.text('Recibí de conformidad el pago descrito en este documento.', 20, y+11)
     doc.setTextColor(0,0,0)
 
     doc.setDrawColor(80,80,80)
     doc.setLineWidth(0.3)
-    doc.line(22, y+30, 100, y+30)
-    doc.line(116, y+30, 194, y+30)
+    doc.line(22, y+21, 100, y+21)
+    doc.line(116, y+21, 194, y+21)
 
     doc.setFontSize(8); doc.setFont('helvetica','bold')
-    doc.text('Entregó', 22, y+34)
-    doc.text('Recibió', 116, y+34)
+    doc.text('Entregó', 22, y+25)
+    doc.text('Recibió', 116, y+25)
     doc.setFont('helvetica','normal'); doc.setFontSize(7)
     doc.setTextColor(120,120,120)
-    doc.text('Nombre y firma', 22, y+38)
-    doc.text(`${op?.nombre?.toUpperCase() || 'Operador'} — Nombre y firma`, 116, y+38)
+    doc.text('Nombre y firma', 22, y+28.5)
+    doc.text(`${op?.nombre?.toUpperCase() || 'Operador'} — Nombre y firma`, 116, y+28.5)
     doc.setTextColor(0,0,0)
 
     doc.setFontSize(7); doc.setTextColor(150,150,150)
