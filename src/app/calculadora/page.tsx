@@ -6,13 +6,13 @@ const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env
 
 const TOURS_FORANEOS = ['catemaco','tajin','tajín','orizaba','xalapa','jalapa','cempoala','dunas','chachalacas','rafting','jalcomulco','cafe','tour del cafe','tlacotalpan','puebla','veracruz','roca','alvarado']
 const LOCALES = ['san juan','mandinga','local','ulua']
-const TIPOS_SERVICIO = ['tour_foraneo','servicio_local','renta','transfer','transfer_especial','tour_transfer','jornada_8h','descanso','vacaciones','falta','oficina','otro']
-const LABEL_TIPO: any = { tour_foraneo:'Tour foráneo', servicio_local:'Servicio local', renta:'Renta', transfer:'Transfer sencillo', transfer_especial:'Transfer especial', tour_transfer:'Tour + Transfer', jornada_8h:'Jornada 8H', descanso:'Descanso', vacaciones:'Vacaciones', falta:'Falta', oficina:'Oficina', otro:'Otro' }
-const VIATICOS: any = { tour_foraneo:250, servicio_local:150, renta:450, transfer:0, transfer_especial:0, tour_transfer:450, jornada_8h:0, descanso:0, vacaciones:0, falta:0, oficina:0, otro:0 }
-const BONO_DERECHO: any = { tour_foraneo:true, servicio_local:false, renta:true, transfer:false, transfer_especial:false, tour_transfer:true, jornada_8h:false, descanso:false, vacaciones:false, falta:false, oficina:false, otro:false }
+const TIPOS_SERVICIO = ['tour_foraneo','servicio_local','renta','transfer','transfer_especial','tour_transfer','jornada_8h','descanso','descanso_puebla','vacaciones','falta','oficina','otro']
+const LABEL_TIPO: any = { tour_foraneo:'Tour foráneo', servicio_local:'Servicio local', renta:'Renta', transfer:'Transfer sencillo', transfer_especial:'Transfer especial', tour_transfer:'Tour + Transfer', jornada_8h:'Jornada 8H', descanso:'Descanso', descanso_puebla:'Descanso en Puebla', vacaciones:'Vacaciones', falta:'Falta', oficina:'Oficina', otro:'Otro' }
+const VIATICOS: any = { tour_foraneo:250, servicio_local:150, renta:450, transfer:0, transfer_especial:0, tour_transfer:450, jornada_8h:0, descanso:0, descanso_puebla:250, vacaciones:0, falta:0, oficina:0, otro:0 }
+const BONO_DERECHO: any = { tour_foraneo:true, servicio_local:false, renta:true, transfer:false, transfer_especial:false, tour_transfer:true, jornada_8h:false, descanso:false, descanso_puebla:false, vacaciones:false, falta:false, oficina:false, otro:false }
 
 // Tarifas especiales por destino específico (tienen prioridad sobre el viático plano por categoría)
-const VIATICOS_DESTINO: any = { 'PUEBLA': 450, 'DUERME EN PUEBLA': 250 }
+const VIATICOS_DESTINO: any = { 'PUEBLA': 450, 'DUERME EN PUEBLA': 250, 'DESCANSO EN PUEBLA': 250 }
 
 // ------------------------------------------------------------
 // Colores identificadores por tipo de servicio.
@@ -26,13 +26,16 @@ const COLORES_SERVICIO: any = {
   renta:   { rgb:[234,88,12],   hex:'#ea580c', label:'Renta' },
   puebla:  { rgb:[126,34,206],  hex:'#7e22ce', label:'Puebla' },
   duerme:  { rgb:[234,179,8],   hex:'#eab308', label:'Duerme en Puebla' },
+  descpue: { rgb:[167,139,250],  hex:'#a78bfa', label:'Descanso en Puebla' },
 }
 
 function claveColor(f: any): string | null {
   const d = (f?.destino || '').toUpperCase().trim()
+  if (d === 'DESCANSO EN PUEBLA') return 'descpue'
   if (d === 'DUERME EN PUEBLA') return 'duerme'
   if (d === 'PUEBLA') return 'puebla'
   const t = f?.tipo_servicio
+  if (t === 'descanso_puebla') return 'descpue'
   if (t === 'tour_foraneo' || t === 'tour_transfer') return 'tour'
   if (t === 'servicio_local') return 'local'
   if (t === 'oficina' || t === 'jornada_8h') return 'oficina'
@@ -69,6 +72,7 @@ function clasificarTipo(tipo: string, destino: string, nota: string): string {
   if (d.includes('tour + transfer') || n.includes('tour + transfer')) return 'tour_transfer'
   if (t === 'renta' && !d.includes('tour')) return 'renta'
   if (t === 'oficina' || d.includes('oficina') || d.includes('a. oficina')) return 'oficina'
+  if (d.includes('descanso en puebla') || n.includes('descanso en puebla')) return 'descanso_puebla'
   if (d.includes('descanso') || n.includes('descanso')) return 'descanso'
   if (t === 'transfer' || d === 'transfer') return 'transfer'
   if (t === 'local' || t === 'servicio_local') return 'servicio_local'
@@ -199,6 +203,15 @@ export default function Calculadora() {
       if (i !== idx) return f
       const updated = { ...f, [campo]: valor }
       if (campo === 'tipo_servicio') {
+        // Al marcar Descanso en Puebla, se ajusta el destino para que
+        // el recibo diga claramente dónde pasó el descanso.
+        const dAct = (updated.destino || '').toUpperCase().trim()
+        if (valor === 'descanso_puebla' && (dAct === '' || dAct === 'DESCANSO')) {
+          updated.destino = 'DESCANSO EN PUEBLA'
+        }
+        if (valor === 'descanso' && dAct === 'DESCANSO EN PUEBLA') {
+          updated.destino = 'DESCANSO'
+        }
         updated.pago_base = obtenerPagoBase(valor, updated.destino)
         if (!BONO_DERECHO[valor]) updated.bono = false
       }
@@ -419,7 +432,7 @@ export default function Calculadora() {
     let y = (doc as any).lastAutoTable.finalY + 3
     doc.setFontSize(6.5); doc.setFont('helvetica','normal')
     let xl = 15
-    for (const k of ['tour','local','oficina','renta','puebla','duerme']) {
+    for (const k of ['tour','local','oficina','renta','puebla','duerme','descpue']) {
       const c = COLORES_SERVICIO[k]
       doc.setFillColor(c.rgb[0], c.rgb[1], c.rgb[2])
       doc.rect(xl, y, 2.5, 2.5, 'F')
@@ -648,7 +661,7 @@ export default function Calculadora() {
             {filas.length > 0 && (
               <div className="bg-gray-900 rounded-xl overflow-hidden mb-4">
                 <div className="flex flex-wrap gap-x-4 gap-y-1 px-4 pt-3 pb-2 text-[11px] text-gray-500">
-                  {['tour','local','oficina','renta','puebla','duerme'].map(k => (
+                  {['tour','local','oficina','renta','puebla','duerme','descpue'].map(k => (
                     <span key={k} className="flex items-center gap-1.5">
                       <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: COLORES_SERVICIO[k].hex }} />
                       {COLORES_SERVICIO[k].label}
