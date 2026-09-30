@@ -18,12 +18,22 @@ const TIPO_COLOR: any = {
 
 const FIJOS = ['Rafa', 'Chema', 'Hector', 'Hervert', 'Alfonso']
 
+// Días que se capturan desde esta pantalla. Todos se guardan como
+// tipo 'local' en asignaciones, cambiando solo el destino.
+const OPCIONES_DIA = [
+  { valor: 'VACACIONES', label: 'Vacaciones', clase: 'bg-blue-950 text-blue-300 border-blue-800' },
+  { valor: 'FALTA',      label: 'Falta',      clase: 'bg-red-950 text-red-300 border-red-800' },
+  { valor: 'DESCANSO',   label: 'Descanso',   clase: 'bg-gray-800 text-gray-300 border-gray-600' },
+  { valor: 'PIDIO DIA',  label: 'Pidió día',  clase: 'bg-amber-950 text-amber-300 border-amber-800' },
+]
+
 function getTipoColor(tipo: string, destino: string, nota: string) {
   const d = (destino || '').toLowerCase()
   const n = (nota || '').toLowerCase()
   if (d.includes('descanso')) return { bg: 'bg-gray-800',  text: 'text-gray-500',  label: 'Descanso' }
   if (d.includes('vacacion')) return { bg: 'bg-blue-950',  text: 'text-blue-400',  label: 'Vacaciones' }
   if (d.includes('falta'))    return { bg: 'bg-red-950',   text: 'text-red-400',   label: 'Falta' }
+  if (d.includes('pidio dia') || d.includes('pidió día')) return { bg: 'bg-amber-950', text: 'text-amber-400', label: 'Pidió día' }
   if (d.includes('a. gaby') || d.includes('a. oficina') || d.includes('s. puebla') || n.includes('jornada'))
     return { bg: 'bg-slate-700', text: 'text-slate-300', label: 'Jornada 8H' }
   return TIPO_COLOR[tipo] || { bg: 'bg-gray-700', text: 'text-gray-300', label: tipo }
@@ -38,7 +48,26 @@ function formatFechaLarga(fecha: string) {
   return `${DIAS_ES[date.getDay()]} ${d} de ${MESES_ES[m-1]} de ${y}`
 }
 
-function Modal({ servicio, operadorNombre, onClose }: any) {
+function formatFechaCorta(fecha: string) {
+  const [, m, d] = fecha.split('-').map(Number)
+  return `${d}/${m}`
+}
+
+/** Lista todos los días entre dos fechas, ambas incluidas. */
+function listarFechas(inicio: string, fin: string): string[] {
+  const salida: string[] = []
+  const d = new Date(inicio + 'T12:00:00')
+  const f = new Date(fin + 'T12:00:00')
+  let guarda = 0
+  while (d <= f && guarda < 400) {
+    salida.push(d.toISOString().split('T')[0])
+    d.setDate(d.getDate() + 1)
+    guarda++
+  }
+  return salida
+}
+
+function Modal({ servicio, operadorNombre, onClose, onAgregar }: any) {
   if (!servicio) return null
   const c = getTipoColor(servicio.tipo, servicio.destino || '', servicio.nota || '')
 
@@ -109,6 +138,260 @@ function Modal({ servicio, operadorNombre, onClose }: any) {
             </div>
           )}
         </div>
+
+        {/* Este descanso no está guardado, se muestra solo porque el día
+            quedó vacío. Desde aquí se puede registrar algo real. */}
+        {servicio.virtual && (
+          <div className="mt-5 pt-4 border-t border-gray-800">
+            <p className="text-[11px] text-gray-500 mb-2">
+              Este descanso no está registrado, se muestra porque el día quedó vacío.
+            </p>
+            <button
+              onClick={() => { onClose(); onAgregar(servicio.operador_id, servicio.fecha) }}
+              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium py-2 rounded-lg"
+            >
+              Registrar vacaciones, falta u otro
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ModalAgregar({ operadores, inicial, onClose, onGuardado }: any) {
+  const [operadorId, setOperadorId] = useState(inicial?.operadorId || '')
+  const [destino, setDestino] = useState('VACACIONES')
+  const [rango, setRango] = useState(false)
+  const [fechaIni, setFechaIni] = useState(inicial?.fecha || '')
+  const [fechaFin, setFechaFin] = useState(inicial?.fecha || '')
+  const [nota, setNota] = useState('')
+  const [guardando, setGuardando] = useState(false)
+  const [mensaje, setMensaje] = useState('')
+  const [conflictos, setConflictos] = useState<string[]>([])
+  const [pendiente, setPendiente] = useState<string[] | null>(null)
+
+  const opNombre = operadores.find((o: any) => o.id === operadorId)?.nombre || ''
+
+  function validar(): string {
+    if (!operadorId) return 'Selecciona el operador.'
+    if (!fechaIni) return 'Indica la fecha.'
+    if (rango) {
+      if (!fechaFin) return 'Indica la fecha final.'
+      if (fechaFin < fechaIni) return 'La fecha final no puede ser anterior a la inicial.'
+    }
+    return ''
+  }
+
+  /** Primer paso: revisa si esos días ya tienen algo capturado. */
+  async function revisar() {
+    const error = validar()
+    if (error) { setMensaje(error); return }
+    setMensaje('')
+    setGuardando(true)
+
+    const fechas = rango ? listarFechas(fechaIni, fechaFin) : [fechaIni]
+    const { data: existentes } = await supabase
+      .from('asignaciones')
+      .select('fecha')
+      .eq('operador_id', operadorId)
+      .in('fecha', fechas)
+
+    const ocupadas: string[] = Array.from(
+      new Set<string>((existentes || []).map((e: any) => String(e.fecha)))
+    ).sort()
+    setGuardando(false)
+
+    if (ocupadas.length > 0) {
+      setConflictos(ocupadas)
+      setPendiente(fechas)
+      return
+    }
+    await guardar(fechas)
+  }
+
+  async function guardar(fechas: string[]) {
+    if (fechas.length === 0) {
+      setMensaje('No quedó ningún día por agregar.')
+      return
+    }
+    setGuardando(true)
+
+    const filas = fechas.map(f => ({
+      fecha: f,
+      tipo: 'local',
+      destino,
+      operador_id: operadorId,
+      unidad_id: null,
+      nota: nota.trim() || null,
+    }))
+
+    const { error } = await supabase.from('asignaciones').insert(filas)
+    if (error) {
+      setGuardando(false)
+      setMensaje('No se pudo guardar: ' + error.message)
+      return
+    }
+
+    // Las vacaciones se guardan TAMBIÉN en su propia tabla, para que
+    // aparezcan en el módulo de Vacaciones y en el expediente.
+    if (destino === 'VACACIONES') {
+      const ordenadas = [...fechas].sort()
+      const { error: errVac } = await supabase.from('vacaciones').insert({
+        operador_id: operadorId,
+        fecha_inicio: ordenadas[0],
+        fecha_fin: ordenadas[ordenadas.length - 1],
+        nota: nota.trim() || null,
+      })
+      if (errVac) {
+        setGuardando(false)
+        setMensaje('Se guardó en el calendario, pero no en el módulo de Vacaciones: ' + errVac.message)
+        onGuardado()
+        return
+      }
+    }
+
+    setGuardando(false)
+    onGuardado(`Se agregaron ${fechas.length} día${fechas.length === 1 ? '' : 's'} a ${opNombre}.`)
+  }
+
+  const opcion = OPCIONES_DIA.find(o => o.valor === destino)
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/70" />
+      <div className="relative bg-gray-900 rounded-2xl p-6 max-w-md w-full border border-gray-700 shadow-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <button onClick={onClose} className="absolute top-4 right-4 text-gray-500 hover:text-white text-xl">×</button>
+        <h2 className="text-lg font-bold text-white mb-5">Agregar días</h2>
+
+        {conflictos.length > 0 ? (
+          <div>
+            <p className="text-sm text-amber-300 mb-3">
+              {conflictos.length === 1
+                ? 'Este día ya tiene algo capturado:'
+                : `Estos ${conflictos.length} días ya tienen algo capturado:`}
+            </p>
+            <div className="bg-gray-800 rounded-lg p-3 mb-4 text-sm text-gray-300 max-h-32 overflow-y-auto">
+              {conflictos.map(f => formatFechaCorta(f)).join(' · ')}
+            </div>
+            <p className="text-xs text-gray-500 mb-4">
+              Si los agregas de todos modos, ese día va a tener dos registros.
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => {
+                  const restantes = (pendiente || []).filter(f => !conflictos.includes(f))
+                  setConflictos([])
+                  guardar(restantes)
+                }}
+                disabled={guardando}
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium py-2.5 rounded-lg disabled:opacity-50"
+              >
+                Omitir esos días y agregar el resto
+              </button>
+              <button
+                onClick={() => { const todas = pendiente || []; setConflictos([]); guardar(todas) }}
+                disabled={guardando}
+                className="w-full bg-gray-700 hover:bg-gray-600 text-gray-200 text-sm py-2.5 rounded-lg disabled:opacity-50"
+              >
+                Agregar de todos modos
+              </button>
+              <button
+                onClick={() => { setConflictos([]); setPendiente(null) }}
+                className="w-full text-gray-500 hover:text-gray-300 text-sm py-2"
+              >
+                Regresar
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs text-gray-400 block mb-1">Operador</label>
+              <select value={operadorId} onChange={e => setOperadorId(e.target.value)}
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white">
+                <option value="">Seleccionar...</option>
+                {operadores.map((o: any) => <option key={o.id} value={o.id}>{o.nombre}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-xs text-gray-400 block mb-1">Qué se registra</label>
+              <div className="grid grid-cols-2 gap-2">
+                {OPCIONES_DIA.map(o => (
+                  <button
+                    key={o.valor}
+                    onClick={() => setDestino(o.valor)}
+                    className={`py-2 rounded-lg text-sm font-medium border transition-colors ${
+                      destino === o.valor ? o.clase : 'bg-gray-800 text-gray-500 border-gray-700'
+                    }`}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <div className="flex gap-2 mb-2">
+                <button onClick={() => setRango(false)}
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-medium ${!rango ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400'}`}>
+                  Un solo día
+                </button>
+                <button onClick={() => { setRango(true); if (!fechaFin) setFechaFin(fechaIni) }}
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-medium ${rango ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400'}`}>
+                  Rango de fechas
+                </button>
+              </div>
+              <div className={`grid gap-2 ${rango ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                <div>
+                  <label className="text-xs text-gray-400 block mb-1">{rango ? 'Desde' : 'Fecha'}</label>
+                  <input type="date" value={fechaIni}
+                    onChange={e => { setFechaIni(e.target.value); if (!rango) setFechaFin(e.target.value) }}
+                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white" />
+                </div>
+                {rango && (
+                  <div>
+                    <label className="text-xs text-gray-400 block mb-1">Hasta</label>
+                    <input type="date" value={fechaFin} onChange={e => setFechaFin(e.target.value)}
+                      className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white" />
+                  </div>
+                )}
+              </div>
+              {rango && fechaIni && fechaFin && fechaFin >= fechaIni && (
+                <p className="text-[11px] text-gray-500 mt-1.5">
+                  Son {listarFechas(fechaIni, fechaFin).length} días.
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label className="text-xs text-gray-400 block mb-1">Nota (opcional)</label>
+              <input type="text" value={nota} onChange={e => setNota(e.target.value)}
+                placeholder="Motivo, autorizó, etc."
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white" />
+            </div>
+
+            {destino === 'VACACIONES' && (
+              <p className="text-[11px] text-blue-400/80 bg-blue-950/40 border border-blue-900/50 rounded-lg px-3 py-2">
+                Además del calendario, se va a registrar en el módulo de Vacaciones.
+              </p>
+            )}
+
+            {mensaje && <p className="text-sm text-red-400">{mensaje}</p>}
+
+            <div className="flex gap-2 pt-1">
+              <button onClick={revisar} disabled={guardando}
+                className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium py-2.5 rounded-lg disabled:opacity-50">
+                {guardando ? 'Guardando...' : 'Agregar'}
+              </button>
+              <button onClick={onClose}
+                className="bg-gray-700 hover:bg-gray-600 text-gray-200 text-sm px-5 py-2.5 rounded-lg">
+                Cancelar
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -122,6 +405,8 @@ export default function Historial() {
   const [loading, setLoading] = useState(true)
   const [modalServicio, setModalServicio] = useState<any>(null)
   const [modalOperador, setModalOperador] = useState<string>('')
+  const [agregar, setAgregar] = useState<any>(null)
+  const [aviso, setAviso] = useState('')
 
   useEffect(() => { cargar() }, [mes])
 
@@ -184,20 +469,45 @@ export default function Historial() {
     setModalOperador(operadorNombre)
   }
 
+  function abrirAgregar(operadorId?: string, fecha?: string) {
+    setAgregar({ operadorId: operadorId || '', fecha: fecha || '' })
+  }
+
+  function alGuardar(texto?: string) {
+    setAgregar(null)
+    if (texto) {
+      setAviso(texto)
+      setTimeout(() => setAviso(''), 5000)
+    }
+    cargar()
+  }
+
   const nombreMes = new Date(`${mes}-15`).toLocaleString('es-MX', { month: 'long', year: 'numeric' })
 
   return (
     <div className="min-h-screen bg-gray-950 text-white p-4">
       <div className="max-w-screen-2xl mx-auto">
 
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
           <div>
             <h1 className="text-2xl font-semibold">Historial de operadores</h1>
             <p className="text-gray-400 text-sm">Vista mensual por operador</p>
           </div>
-          <input type="month" value={mes} onChange={e => setMes(e.target.value)}
-            className="bg-gray-800 border border-gray-700 text-white px-3 py-2 rounded-lg" />
+          <div className="flex items-center gap-2">
+            <button onClick={() => abrirAgregar()}
+              className="bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-lg text-sm font-medium">
+              + Agregar días
+            </button>
+            <input type="month" value={mes} onChange={e => setMes(e.target.value)}
+              className="bg-gray-800 border border-gray-700 text-white px-3 py-2 rounded-lg" />
+          </div>
         </div>
+
+        {aviso && (
+          <div className="mb-4 bg-green-950/50 border border-green-800 text-green-300 px-4 py-2.5 rounded-lg text-sm">
+            {aviso}
+          </div>
+        )}
 
         <div className="flex flex-wrap gap-2 mb-6">
           {Object.entries(TIPO_COLOR).map(([k, v]: any) => (
@@ -206,6 +516,7 @@ export default function Historial() {
           <span className="bg-gray-800 text-gray-500 text-xs px-3 py-1 rounded-full font-medium">Descanso</span>
           <span className="bg-blue-950 text-blue-400 text-xs px-3 py-1 rounded-full font-medium">Vacaciones</span>
           <span className="bg-red-950 text-red-400 text-xs px-3 py-1 rounded-full font-medium">Falta</span>
+          <span className="bg-amber-950 text-amber-400 text-xs px-3 py-1 rounded-full font-medium">Pidió día</span>
           <span className="bg-slate-700 text-slate-300 text-xs px-3 py-1 rounded-full font-medium">Jornada 8H</span>
         </div>
 
@@ -231,6 +542,10 @@ export default function Historial() {
                 )
               })}
             </div>
+
+            <p className="text-[11px] text-gray-600 mb-2">
+              Da clic en un día vacío para registrar vacaciones, falta u otro.
+            </p>
 
             <div className="overflow-x-auto">
               <table className="text-xs border-collapse w-full">
@@ -267,13 +582,19 @@ export default function Historial() {
                             {servicios.length === 0 ? (
                               mostrarDescanso ? (
                                 <div
-                                  onClick={() => abrirModal({ fecha: d, tipo: 'local', destino: 'DESCANSO', nota: '', unidad_id: null, pax: null, hora_inicio: null, hora_fin: null }, op.nombre)}
+                                  onClick={() => abrirModal({ fecha: d, tipo: 'local', destino: 'DESCANSO', nota: '', unidad_id: null, pax: null, hora_inicio: null, hora_fin: null, virtual: true, operador_id: op.id }, op.nombre)}
                                   className="bg-gray-800 text-gray-500 rounded px-1 py-0.5 text-center leading-tight cursor-pointer hover:opacity-80 transition-opacity"
                                 >
                                   <div className="font-medium">Descanso</div>
                                 </div>
                               ) : (
-                                <span className="text-gray-700">—</span>
+                                <button
+                                  onClick={() => abrirAgregar(op.id, d)}
+                                  title="Agregar vacaciones, falta u otro"
+                                  className="w-full text-gray-700 hover:text-indigo-400 hover:bg-gray-800 rounded py-0.5 transition-colors"
+                                >
+                                  —
+                                </button>
                               )
                             ) : (
                               <div className="flex flex-col gap-0.5">
@@ -310,7 +631,17 @@ export default function Historial() {
         servicio={modalServicio}
         operadorNombre={modalOperador}
         onClose={() => setModalServicio(null)}
+        onAgregar={(opId: string, fecha: string) => abrirAgregar(opId, fecha)}
       />
+
+      {agregar && (
+        <ModalAgregar
+          operadores={operadores}
+          inicial={agregar}
+          onClose={() => setAgregar(null)}
+          onGuardado={alGuardar}
+        />
+      )}
     </div>
   )
 }
